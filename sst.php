@@ -13,3 +13,19 @@
  */
 
 namespace SST;
+
+define( __NAMESPACE__ . '\PATH', __DIR__ );
+
+/**
+ * Bootstrap the plugin.
+ */
+function bootstrap() {
+	// Custom content types.
+	require_once PATH . '/inc/content-types.php';
+
+	// REST API integration.
+	require_once PATH . '/inc/class-rest-api.php';
+	$rest = new REST_API();
+	add_action( 'rest_api_init', [ $rest, 'register_routes' ] );
+}
+add_action( 'after_setup_theme', __NAMESPACE__ . '\bootstrap' );
