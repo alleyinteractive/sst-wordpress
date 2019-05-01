@@ -36,7 +36,7 @@ class REST_API extends \WP_REST_Controller {
 					'permission_callback' => [ $this, 'create_item_permissions_check' ],
 					'args'                => $this->get_endpoint_args_for_item_schema( \WP_REST_Server::CREATABLE ),
 				],
-				'schema' => [ $this, 'get_public_item_schema' ],
+				'schema' => [ $this, 'get_response_schema' ],
 			]
 		);
 		register_rest_route(
@@ -55,7 +55,7 @@ class REST_API extends \WP_REST_Controller {
 					'permission_callback' => [ $this, 'update_item_permissions_check' ],
 					'args'                => $this->get_endpoint_args_for_item_schema( \WP_REST_Server::EDITABLE ),
 				],
-				'schema' => [ $this, 'get_public_item_schema' ],
+				'schema' => [ $this, 'get_response_schema' ],
 			]
 		);
 	}
@@ -161,7 +161,67 @@ class REST_API extends \WP_REST_Controller {
 	}
 
 	/**
-	 * Retrieves the post's schema, conforming to JSON Schema.
+	 * Retrieves the POST response schema, conforming to JSON Schema.
+	 *
+	 * @return array Item schema data.
+	 */
+	public function get_response_schema() {
+		$schema = [
+			'$schema'    => 'http://json-schema.org/draft-04/schema#',
+			'title'      => 'sst-post',
+			'type'       => 'object',
+			'properties' => [
+				'posts' => [
+					'type'        => 'array',
+					'description' => __( 'Posts that were created or updated during the request.', 'sst' ),
+					'items'       => [
+						'type'       => 'object',
+						'properties' => [
+							'source_id' => [
+								'type'        => 'string',
+								'description' => __( 'The original source ID.', 'sst' ),
+							],
+							'post_id'   => [
+								'type'        => 'integer',
+								'description' => __( 'The WordPress post ID.', 'sst' ),
+							],
+							'post_type' => [
+								'type'        => 'string',
+								'description' => __( 'The WordPress post type.', 'sst' ),
+							],
+						],
+					],
+				],
+				'terms' => [
+					'type'        => 'array',
+					'description' => __( 'Terms that were created or updated during the request.', 'sst' ),
+					'items'       => [
+						'type'       => 'object',
+						'properties' => [
+							'slug'     => [
+								'type'        => 'string',
+								'description' => __( 'The term slug.', 'sst' ),
+							],
+							'taxonomy' => [
+								'type'        => 'string',
+								'description' => __( 'The term taxonomy.', 'sst' ),
+							],
+							'term_id'  => [
+								'type'        => 'integer',
+								'description' => __( 'The term ID.', 'sst' ),
+							],
+						],
+					],
+				],
+			],
+		];
+
+		return $schema;
+	}
+
+	/**
+	 * Retrieves the SST schema, primarily intended to be turned into request
+	 * args, conforming to JSON Schema.
 	 *
 	 * @return array Item schema data.
 	 */
@@ -182,46 +242,6 @@ class REST_API extends \WP_REST_Controller {
 					'type'        => 'string',
 					'format'      => 'date-time',
 				],
-				'guid'           => [
-					'description' => __( 'The globally unique identifier for the object.', 'sst' ),
-					'type'        => 'object',
-					'readonly'    => true,
-					'properties'  => [
-						'raw'      => [
-							'description' => __( 'GUID for the object, as it exists in the database.', 'sst' ),
-							'type'        => 'string',
-							'readonly'    => true,
-						],
-						'rendered' => [
-							'description' => __( 'GUID for the object, transformed for display.', 'sst' ),
-							'type'        => 'string',
-							'readonly'    => true,
-						],
-					],
-				],
-				'id'             => [
-					'description' => __( 'Unique identifier for the object.', 'sst' ),
-					'type'        => 'integer',
-					'readonly'    => true,
-				],
-				'link'           => [
-					'description' => __( 'URL to the object.', 'sst' ),
-					'type'        => 'string',
-					'format'      => 'uri',
-					'readonly'    => true,
-				],
-				'modified'       => [
-					'description' => __( "The date the object was last modified, in the site's timezone.", 'sst' ),
-					'type'        => 'string',
-					'format'      => 'date-time',
-					'readonly'    => true,
-				],
-				'modified_gmt'   => [
-					'description' => __( 'The date the object was last modified, as GMT.', 'sst' ),
-					'type'        => 'string',
-					'format'      => 'date-time',
-					'readonly'    => true,
-				],
 				'slug'           => [
 					'description' => __( 'An alphanumeric identifier for the object unique to its type.', 'sst' ),
 					'type'        => 'string',
@@ -237,61 +257,39 @@ class REST_API extends \WP_REST_Controller {
 				'type'           => [
 					'description' => __( 'Type of Post for the object.', 'sst' ),
 					'type'        => 'string',
-					'readonly'    => true,
+					'enum'        => array_values( get_post_types() ),
+					'required'    => true,
 				],
 				'parent'         => [
 					'description' => __( 'The ID for the parent of the object.', 'sst' ),
 					'type'        => 'integer',
 				],
-				'password'       => [
-					'description' => __( 'A password to protect access to the content and excerpt.', 'sst' ),
-					'type'        => 'string',
-				],
 				'title'          => [
 					'description' => __( 'The title for the object.', 'sst' ),
 					'type'        => 'object',
 					'arg_options' => [
-						'sanitize_callback' => null, // Note: sanitization implemented in self::prepare_item_for_database().
-						'validate_callback' => null, // Note: validation implemented in self::prepare_item_for_database().
+						'sanitize_callback' => null, // Note: sanitization implemented in WP_REST_Posts_Controller::prepare_item_for_database().
+						'validate_callback' => null, // Note: validation implemented in WP_REST_Posts_Controller::prepare_item_for_database().
 					],
 					'properties'  => [
 						'raw'      => [
 							'description' => __( 'Title for the object, as it exists in the database.', 'sst' ),
 							'type'        => 'string',
 						],
-						'rendered' => [
-							'description' => __( 'HTML title for the object, transformed for display.', 'sst' ),
-							'type'        => 'string',
-							'readonly'    => true,
-						],
 					],
+					'required'    => true,
 				],
 				'content'        => [
 					'description' => __( 'The content for the object.', 'sst' ),
 					'type'        => 'object',
 					'arg_options' => [
-						'sanitize_callback' => null, // Note: sanitization implemented in self::prepare_item_for_database().
-						'validate_callback' => null, // Note: validation implemented in self::prepare_item_for_database().
+						'sanitize_callback' => null, // Note: sanitization implemented in WP_REST_Posts_Controller::prepare_item_for_database().
+						'validate_callback' => null, // Note: validation implemented in WP_REST_Posts_Controller::prepare_item_for_database().
 					],
 					'properties'  => [
 						'raw'           => [
 							'description' => __( 'Content for the object, as it exists in the database.', 'sst' ),
 							'type'        => 'string',
-						],
-						'rendered'      => [
-							'description' => __( 'HTML content for the object, transformed for display.', 'sst' ),
-							'type'        => 'string',
-							'readonly'    => true,
-						],
-						'block_version' => [
-							'description' => __( 'Version of the content block format used by the object.', 'sst' ),
-							'type'        => 'integer',
-							'readonly'    => true,
-						],
-						'protected'     => [
-							'description' => __( 'Whether the content is protected with a password.', 'sst' ),
-							'type'        => 'boolean',
-							'readonly'    => true,
 						],
 					],
 				],
@@ -303,23 +301,13 @@ class REST_API extends \WP_REST_Controller {
 					'description' => __( 'The excerpt for the object.', 'sst' ),
 					'type'        => 'object',
 					'arg_options' => [
-						'sanitize_callback' => null, // Note: sanitization implemented in self::prepare_item_for_database().
-						'validate_callback' => null, // Note: validation implemented in self::prepare_item_for_database().
+						'sanitize_callback' => null, // Note: sanitization implemented in WP_REST_Posts_Controller::prepare_item_for_database().
+						'validate_callback' => null, // Note: validation implemented in WP_REST_Posts_Controller::prepare_item_for_database().
 					],
 					'properties'  => [
 						'raw'       => [
 							'description' => __( 'Excerpt for the object, as it exists in the database.', 'sst' ),
 							'type'        => 'string',
-						],
-						'rendered'  => [
-							'description' => __( 'HTML excerpt for the object, transformed for display.', 'sst' ),
-							'type'        => 'string',
-							'readonly'    => true,
-						],
-						'protected' => [
-							'description' => __( 'Whether the excerpt is protected with a password.', 'sst' ),
-							'type'        => 'boolean',
-							'readonly'    => true,
 						],
 					],
 				],
