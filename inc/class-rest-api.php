@@ -337,19 +337,24 @@ class REST_API extends \WP_REST_Controller {
 				'meta'           => [
 					'description' => __( 'Meta fields.', 'sst' ),
 					'type'        => 'object',
-					'properties'  => [
-						'additionalProperties' => false,
-						'patternProperties'    => [
-							'^.*$' => [
-								'anyOf' => [
-									[
-										'type' => 'string',
-									],
-									[
-										'type' => 'array',
-									],
+					'additionalProperties' => false,
+					'patternProperties'    => [
+						'^.*$' => [
+							'anyOf' => [
+								[
+									'type' => 'string',
+								],
+								[
+									'type' => 'array',
 								],
 							],
+						],
+					],
+					'properties'  => [
+						'source_id' => [
+							'type'        => 'string',
+							'description' => __( 'The original source ID.', 'sst' ),
+							'required'    => true,
 						],
 					],
 					'arg_options' => [
