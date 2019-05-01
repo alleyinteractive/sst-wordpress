@@ -23,6 +23,9 @@ function bootstrap() {
 	// Custom content types.
 	require_once PATH . '/inc/content-types.php';
 
+	// Custom capabilities.
+	require_once PATH . '/inc/capabilities.php';
+
 	// REST API integration.
 	require_once PATH . '/inc/class-rest-api.php';
 	$rest = new REST_API();
