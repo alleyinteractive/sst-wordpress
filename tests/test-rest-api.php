@@ -88,9 +88,33 @@ class Test_REST_API extends \WP_UnitTestCase {
 		);
 	}
 
-	/**
-	 * A single example test.
-	 */
+	public function test_create_basic_promise_post() {
+		wp_set_current_user( self::$admin_id );
+
+		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
+		$request->add_header( 'content-type', 'application/json' );
+
+		// Set the absolute minimum amount of data required to create a post.
+		$params = [
+			'title' => 'Simple Post',
+			'type'  => 'sst-promise',
+			'meta'  => [
+				'sst_source_id' => 'basic-123',
+			],
+		];
+
+		$request->set_body( wp_json_encode( $params ) );
+		$response = rest_get_server()->dispatch( $request );
+
+		$this->assertNotWPError( $response );
+		$this->assertInstanceOf( '\WP_REST_Response', $response );
+		$this->assertEquals( 201, $response->get_status() );
+
+		$data = $response->get_data();
+		$this->assertSame( $params['meta']['sst_source_id'], $data['posts'][0]['sst_source_id'] );
+		$this->assertSame( $params['type'], $data['posts'][0]['post_type'] );
+	}
+
 	public function test_create_post() {
 		wp_set_current_user( self::$admin_id );
 

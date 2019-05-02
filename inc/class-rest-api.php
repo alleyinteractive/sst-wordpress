@@ -226,7 +226,7 @@ class REST_API extends \WP_REST_Controller {
 		$post_type_obj = get_post_type_object( $request['type'] );
 		$response      = $this->dispatch_request(
 			'POST',
-			'/wp/v2/' . ( $post_type_obj->rest_base ?? $post_type_obj->name ),
+			'/wp/v2/' . ( $post_type_obj->rest_base ?: $post_type_obj->name ),
 			[ 'body' => $prepared_post ]
 		);
 
@@ -321,7 +321,7 @@ class REST_API extends \WP_REST_Controller {
 		if ( empty( $request['meta']['sst_source_id'] ) ) {
 			return new \WP_Error(
 				'empty-source_id',
-				__( 'Post is missing source ID (`meta.source_id`)', 'sst' ),
+				__( 'Post is missing source ID (`meta.sst_source_id`)', 'sst' ),
 				[ 'status' => 400 ]
 			);
 		}
@@ -556,7 +556,7 @@ class REST_API extends \WP_REST_Controller {
 					],
 				],
 				'attachments'    => [
-					'description' => __( 'Post attachments to download.', 'sst' ),
+					'description' => __( 'Post attachments (URLs) to download.', 'sst' ),
 					'type'        => 'array',
 					'items'       => [
 						'type' => 'string',
