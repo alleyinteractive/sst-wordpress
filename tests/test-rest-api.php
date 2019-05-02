@@ -48,7 +48,12 @@ class Test_REST_API extends \WP_UnitTestCase {
 			'author'  => get_current_user_id(),
 			'type'    => 'post',
 			'meta'    => [
-				'sst_source_id' => 'abc123',
+				'sst_source_id'      => 'abc123',
+				'unregistered_meta'  => 'Unregistered Meta',
+				'unregistered_array' => [
+					'value 1',
+					'value 2',
+				],
 			],
 		];
 
@@ -72,6 +77,15 @@ class Test_REST_API extends \WP_UnitTestCase {
 		$source_id = get_post_meta( $post->ID, 'sst_source_id', true );
 		$this->assertSame( $source_id, $data['posts'][0]['sst_source_id'] );
 		$this->assertSame( $source_id, $params['meta']['sst_source_id'] );
+
+		$this->assertSame(
+			get_post_meta( $post->ID, 'unregistered_meta', true ),
+			$params['meta']['unregistered_meta']
+		);
+		$this->assertSame(
+			get_post_meta( $post->ID, 'unregistered_array' ),
+			$params['meta']['unregistered_array']
+		);
 	}
 
 	/**

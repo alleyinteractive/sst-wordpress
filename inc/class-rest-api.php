@@ -90,12 +90,12 @@ class REST_API extends \WP_REST_Controller {
 			return $error;
 		}
 
-		$post = get_post( (int) $id );
-		if ( empty( $post ) || empty( $post->ID ) ) {
+		$prepared_post = get_post( (int) $id );
+		if ( empty( $prepared_post ) || empty( $prepared_post->ID ) ) {
 			return $error;
 		}
 
-		return $post;
+		return $prepared_post;
 	}
 
 	/**
@@ -132,8 +132,8 @@ class REST_API extends \WP_REST_Controller {
 	protected function add_object_to_response( array $response, $object ): array {
 		if ( $object instanceof \WP_Post ) {
 			$response['posts'][] = [
-				'post_id'   => $object->ID,
-				'post_type' => $object->post_type,
+				'post_id'       => $object->ID,
+				'post_type'     => $object->post_type,
 				'sst_source_id' => get_post_meta( $object->ID, 'sst_source_id', true ),
 			];
 		} elseif ( $object instanceof \WP_Term ) {
@@ -145,6 +145,33 @@ class REST_API extends \WP_REST_Controller {
 		}
 
 		return $response;
+	}
+
+	/**
+	 * Save post meta from an API request to a given post.
+	 *
+	 * @param int              $post_id Post ID.
+	 * @param \WP_REST_Request $request REST request containing post meta.
+	 * @return bool True if meta is added, false if not.
+	 */
+	protected function save_post_meta( int $post_id, \WP_REST_Request $request ): bool {
+		if ( empty( $request['meta'] ) ) {
+			return false;
+		}
+
+		foreach ( $request['meta'] as $key => $values ) {
+			// Discern between single values and multiple.
+			if ( is_array( $values ) ) {
+				delete_post_meta( $post_id, $key );
+				foreach ( $values as $value ) {
+					add_post_meta( $post_id, $key, $value );
+				}
+			} else {
+				update_post_meta( $post_id, $key, $values );
+			}
+		}
+
+		return true;
 	}
 
 	/**
@@ -165,7 +192,7 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Checks if a given request has access to create a post.
 	 *
-	 * @param WP_REST_Request $request Full details about the request.
+	 * @param \WP_REST_Request $request Full details about the request.
 	 * @return true|WP_Error True if the request has access to create items, WP_Error object otherwise.
 	 */
 	public function create_item_permissions_check( $request ) {
@@ -183,16 +210,16 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Creates a single post.
 	 *
-	 * @param WP_REST_Request $request Full details about the request.
+	 * @param \WP_REST_Request $request Full details about the request.
 	 * @return WP_REST_Response|WP_Error Response object on success, or WP_Error object on failure.
 	 */
 	public function create_item( $request ) {
 		$created_objects = [];
 
 		// Validate the post to be inserted.
-		$post = $this->prepare_item_for_database( $request );
-		if ( is_wp_error( $post ) ) {
-			return $post;
+		$prepared_post = $this->prepare_item_for_database( $request );
+		if ( is_wp_error( $prepared_post ) ) {
+			return $prepared_post;
 		}
 
 		// Defer to the core REST API endpoint to create the post.
@@ -200,14 +227,13 @@ class REST_API extends \WP_REST_Controller {
 		$response      = $this->dispatch_request(
 			'POST',
 			'/wp/v2/' . ( $post_type_obj->rest_base ?? $post_type_obj->name ),
-			[ 'body' => $post ]
+			[ 'body' => $prepared_post ]
 		);
 
+		// Confirm the response from the core endpoint.
 		if ( is_wp_error( $response ) ) {
 			return $response;
-		}
-
-		if ( $response->get_status() >= 400 ) {
+		} elseif ( $response->get_status() >= 400 ) {
 			return $response;
 		} elseif ( 201 !== $response->get_status() ) {
 			return new \WP_Error(
@@ -221,14 +247,31 @@ class REST_API extends \WP_REST_Controller {
 			);
 		}
 
+		// Add the created object to this endpoint's response.
 		$data = $response->get_data();
-		if ( ! empty( $data['id'] ) ) {
-			$created_objects = $this->add_object_to_response(
-				$created_objects,
-				get_post( $data['id'] )
+		if ( empty( $data['id'] ) ) {
+			return new \WP_Error(
+				'missing-post-id',
+				sprintf(
+					__( 'Missing the ID of the created post.', 'sst' ),
+					$response->get_status()
+				),
+				[ 'status' => 400 ]
 			);
 		}
 
+		$post = get_post( $data['id'] );
+
+		// Save the post meta.
+		$this->save_post_meta( $post->ID, $request );
+
+		// Add the created post to the response.
+		$created_objects = $this->add_object_to_response(
+			$created_objects,
+			$post
+		);
+
+		// Set the API response.
 		$api_response = rest_ensure_response( $created_objects );
 		$api_response->set_status( 201 );
 		return $api_response;
@@ -237,13 +280,13 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Checks if a given request has access to update a post.
 	 *
-	 * @param WP_REST_Request $request Full details about the request.
+	 * @param \WP_REST_Request $request Full details about the request.
 	 * @return true|WP_Error True if the request has access to update the item, WP_Error object otherwise.
 	 */
 	public function update_item_permissions_check( $request ) {
-		$post = $this->get_post( $request['id'] );
-		if ( is_wp_error( $post ) ) {
-			return $post;
+		$prepared_post = $this->get_post( $request['id'] );
+		if ( is_wp_error( $prepared_post ) ) {
+			return $prepared_post;
 		}
 
 		return $this->authenticate_sst_permissions_check();
@@ -252,7 +295,7 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Updates a single post.
 	 *
-	 * @param WP_REST_Request $request Full details about the request.
+	 * @param \WP_REST_Request $request Full details about the request.
 	 * @return WP_REST_Response|WP_Error Response object on success, or WP_Error object on failure.
 	 */
 	public function update_item( $request ) {
@@ -298,7 +341,14 @@ class REST_API extends \WP_REST_Controller {
 		}
 
 		// Remove fields that shouldn't be passed to the saved post.
-		unset( $post_data['attachments'], $post_data['type'] );
+		unset(
+			// Attachments will be downloaded separately.
+			$post_data['attachments'],
+			// Post type is used to determine which core endpoint gets dispatched.
+			$post_data['type'],
+			// Meta is saved separately to allow for unregistered meta.
+			$post_data['meta']
+		);
 
 		return (object) $post_data;
 	}
@@ -324,11 +374,11 @@ class REST_API extends \WP_REST_Controller {
 								'type'        => 'string',
 								'description' => __( 'The original source ID.', 'sst' ),
 							],
-							'post_id'   => [
+							'post_id'       => [
 								'type'        => 'integer',
 								'description' => __( 'The WordPress post ID.', 'sst' ),
 							],
-							'post_type' => [
+							'post_type'     => [
 								'type'        => 'string',
 								'description' => __( 'The WordPress post type.', 'sst' ),
 							],
@@ -535,14 +585,14 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Check the 'meta' value of a request is an associative array.
 	 *
-	 * @param  mixed $value The meta value submitted in the request.
+	 * @param  mixed $values The meta value submitted in the request.
 	 * @return WP_Error|string The meta array, if valid, otherwise an error.
 	 */
-	public function check_meta_is_array( $value ) {
-		if ( ! is_array( $value ) ) {
+	public function check_meta_is_array( $values ) {
+		if ( ! is_array( $values ) ) {
 			return false;
 		}
 
-		return $value;
+		return $values;
 	}
 }
