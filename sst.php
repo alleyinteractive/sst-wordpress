@@ -30,5 +30,6 @@ function bootstrap() {
 	require_once PATH . '/inc/class-rest-api.php';
 	$rest = new REST_API();
 	add_action( 'rest_api_init', [ $rest, 'register_routes' ] );
+	add_action( 'rest_api_init', [ $rest, 'register_meta' ] );
 }
 add_action( 'after_setup_theme', __NAMESPACE__ . '\bootstrap' );

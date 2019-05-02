@@ -61,6 +61,22 @@ class REST_API extends \WP_REST_Controller {
 	}
 
 	/**
+	 * Register post meta used by SST.
+	 */
+	public function register_meta() {
+		register_post_meta(
+			'',
+			'sst_source_id',
+			[
+				'sanitize_callback' => 'sanitize_text_field',
+				'show_in_rest'      => true,
+				'single'            => true,
+				'type'              => 'string',
+			]
+		);
+	}
+
+	/**
 	 * Get the post, if the ID is valid.
 	 *
 	 * @since 4.7.2
@@ -80,6 +96,55 @@ class REST_API extends \WP_REST_Controller {
 		}
 
 		return $post;
+	}
+
+	/**
+	 * Dispatch another REST API request.
+	 *
+	 * @param string $method Request method.
+	 * @param string $route  REST API route.
+	 * @param array  $args   {
+	 *     Request arguments.
+	 *
+	 *     @type mixed $body Request body.
+	 * }
+	 * @return WP_REST_Response REST response.
+	 */
+	protected function dispatch_request( $method, $route, $args = [] ) {
+		$request = new \WP_REST_Request( $method, $route );
+		$request->add_header( 'content-type', 'application/json' );
+
+		if ( ! empty( $args['body'] ) ) {
+			$request->set_body( wp_json_encode( $args['body'] ) );
+		}
+
+		return rest_do_request( $request );
+	}
+
+	/**
+	 * Add a created object to the response.
+	 *
+	 * @param array             $response Response array to which to add an
+	 *                                    object.
+	 * @param \WP_Post|\WP_Term $object   Post or term object.
+	 * @return array
+	 */
+	protected function add_object_to_response( array $response, $object ): array {
+		if ( $object instanceof \WP_Post ) {
+			$response['posts'][] = [
+				'post_id'   => $object->ID,
+				'post_type' => $object->post_type,
+				'sst_source_id' => get_post_meta( $object->ID, 'sst_source_id', true ),
+			];
+		} elseif ( $object instanceof \WP_Term ) {
+			$response['terms'][] = [
+				'term_id'  => $object->term_id,
+				'taxonomy' => $object->taxonomy,
+				'slug'     => $object->slug,
+			];
+		}
+
+		return $response;
 	}
 
 	/**
@@ -122,13 +187,51 @@ class REST_API extends \WP_REST_Controller {
 	 * @return WP_REST_Response|WP_Error Response object on success, or WP_Error object on failure.
 	 */
 	public function create_item( $request ) {
-		$data = [];
+		$created_objects = [];
 
-		$response = rest_ensure_response( $data );
+		// Validate the post to be inserted.
+		$post = $this->prepare_item_for_database( $request );
+		if ( is_wp_error( $post ) ) {
+			return $post;
+		}
 
-		$response->set_status( 201 );
+		// Defer to the core REST API endpoint to create the post.
+		$post_type_obj = get_post_type_object( $request['type'] );
+		$response      = $this->dispatch_request(
+			'POST',
+			'/wp/v2/' . ( $post_type_obj->rest_base ?? $post_type_obj->name ),
+			[ 'body' => $post ]
+		);
 
-		return $response;
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		if ( $response->get_status() >= 400 ) {
+			return $response;
+		} elseif ( 201 !== $response->get_status() ) {
+			return new \WP_Error(
+				'unexpected-response',
+				sprintf(
+					/* translators: %d: response code from creating post */
+					__( 'Unexpected response creating post: %d.', 'sst' ),
+					$response->get_status()
+				),
+				[ 'status' => 400 ]
+			);
+		}
+
+		$data = $response->get_data();
+		if ( ! empty( $data['id'] ) ) {
+			$created_objects = $this->add_object_to_response(
+				$created_objects,
+				get_post( $data['id'] )
+			);
+		}
+
+		$api_response = rest_ensure_response( $created_objects );
+		$api_response->set_status( 201 );
+		return $api_response;
 	}
 
 	/**
@@ -161,6 +264,46 @@ class REST_API extends \WP_REST_Controller {
 	}
 
 	/**
+	 * Prepares a single post for create or update.
+	 *
+	 * @since 4.7.0
+	 *
+	 * @param \WP_REST_Request $request Request object.
+	 * @return stdClass|WP_Error Post object or WP_Error.
+	 */
+	protected function prepare_item_for_database( $request ) {
+		$post_data = (array) $request->get_json_params();
+
+		// First, check required fields.
+		if ( empty( $request['meta']['sst_source_id'] ) ) {
+			return new \WP_Error(
+				'empty-source_id',
+				__( 'Post is missing source ID (`meta.source_id`)', 'sst' ),
+				[ 'status' => 400 ]
+			);
+		}
+		if ( empty( $request['title'] ) ) {
+			return new \WP_Error(
+				'empty-title',
+				__( 'Post is missing title (`title`)', 'sst' ),
+				[ 'status' => 400 ]
+			);
+		}
+		if ( empty( $request['type'] ) ) {
+			return new \WP_Error(
+				'empty-type',
+				__( 'Post is missing post type (`type`)', 'sst' ),
+				[ 'status' => 400 ]
+			);
+		}
+
+		// Remove fields that shouldn't be passed to the saved post.
+		unset( $post_data['attachments'], $post_data['type'] );
+
+		return (object) $post_data;
+	}
+
+	/**
 	 * Retrieves the POST response schema, conforming to JSON Schema.
 	 *
 	 * @return array Item schema data.
@@ -177,7 +320,7 @@ class REST_API extends \WP_REST_Controller {
 					'items'       => [
 						'type'       => 'object',
 						'properties' => [
-							'source_id' => [
+							'sst_source_id' => [
 								'type'        => 'string',
 								'description' => __( 'The original source ID.', 'sst' ),
 							],
@@ -272,7 +415,7 @@ class REST_API extends \WP_REST_Controller {
 						'validate_callback' => null, // Note: validation implemented in WP_REST_Posts_Controller::prepare_item_for_database().
 					],
 					'properties'  => [
-						'raw'      => [
+						'raw' => [
 							'description' => __( 'Title for the object, as it exists in the database.', 'sst' ),
 							'type'        => 'string',
 						],
@@ -287,7 +430,7 @@ class REST_API extends \WP_REST_Controller {
 						'validate_callback' => null, // Note: validation implemented in WP_REST_Posts_Controller::prepare_item_for_database().
 					],
 					'properties'  => [
-						'raw'           => [
+						'raw' => [
 							'description' => __( 'Content for the object, as it exists in the database.', 'sst' ),
 							'type'        => 'string',
 						],
@@ -305,7 +448,7 @@ class REST_API extends \WP_REST_Controller {
 						'validate_callback' => null, // Note: validation implemented in WP_REST_Posts_Controller::prepare_item_for_database().
 					],
 					'properties'  => [
-						'raw'       => [
+						'raw' => [
 							'description' => __( 'Excerpt for the object, as it exists in the database.', 'sst' ),
 							'type'        => 'string',
 						],
@@ -335,8 +478,8 @@ class REST_API extends \WP_REST_Controller {
 					'enum'        => array_values( get_post_format_slugs() ),
 				],
 				'meta'           => [
-					'description' => __( 'Meta fields.', 'sst' ),
-					'type'        => 'object',
+					'description'          => __( 'Meta fields.', 'sst' ),
+					'type'                 => 'object',
 					'additionalProperties' => false,
 					'patternProperties'    => [
 						'^.*$' => [
@@ -350,14 +493,14 @@ class REST_API extends \WP_REST_Controller {
 							],
 						],
 					],
-					'properties'  => [
-						'source_id' => [
+					'properties'           => [
+						'sst_source_id' => [
 							'type'        => 'string',
 							'description' => __( 'The original source ID.', 'sst' ),
 							'required'    => true,
 						],
 					],
-					'arg_options' => [
+					'arg_options'          => [
 						'sanitize_callback' => null,
 						'validate_callback' => [ $this, 'check_meta_is_array' ],
 					],
@@ -387,5 +530,19 @@ class REST_API extends \WP_REST_Controller {
 		}
 
 		return $this->add_additional_fields_schema( $schema );
+	}
+
+	/**
+	 * Check the 'meta' value of a request is an associative array.
+	 *
+	 * @param  mixed $value The meta value submitted in the request.
+	 * @return WP_Error|string The meta array, if valid, otherwise an error.
+	 */
+	public function check_meta_is_array( $value ) {
+		if ( ! is_array( $value ) ) {
+			return false;
+		}
+
+		return $value;
 	}
 }
