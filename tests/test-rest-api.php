@@ -121,7 +121,6 @@ class Test_REST_API extends \WP_UnitTestCase {
 		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
 		$request->add_header( 'content-type', 'application/json' );
 
-		// Set the absolute minimum amount of data required to create a post.
 		$params = [
 			'title' => 'Simple Post',
 			'type'  => 'sst-promise',
@@ -166,5 +165,64 @@ class Test_REST_API extends \WP_UnitTestCase {
 		$data = $response->get_data();
 		$this->assertFalse( empty( $data['posts'][1]['sst_source_id'] ) );
 		$this->assertSame( $url, $data['posts'][1]['sst_source_id'] );
+	}
+
+	public function test_attachment_alt_text_inherted_from_desc() {
+		wp_set_current_user( self::$admin_id );
+		$url         = 'https://wpthemetestdata.files.wordpress.com/2008/06/canola2.jpg';
+		$description = 'Alt text should inherit description';
+
+		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
+		$request->add_header( 'content-type', 'application/json' );
+		$params = $this->set_post_data(
+			[
+				'attachments' => [ compact( 'url', 'description' ) ],
+			]
+		);
+		$request->set_body( wp_json_encode( $params ) );
+		$response = rest_get_server()->dispatch( $request );
+
+		$this->check_create_post_response( $response, $params );
+
+		$data = $response->get_data();
+		$this->assertFalse( empty( $data['posts'][1]['post_id'] ) );
+		$this->assertSame(
+			$description,
+			get_post_meta( $data['posts'][1]['post_id'], '_wp_attachment_image_alt', true )
+		);
+	}
+
+	public function test_attachment_alt_text_explicit() {
+		wp_set_current_user( self::$admin_id );
+		$url         = 'https://wpthemetestdata.files.wordpress.com/2008/06/canola2.jpg';
+		$description = 'Image description';
+		$alt_text    = 'Alt text';
+
+		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
+		$request->add_header( 'content-type', 'application/json' );
+		$params = $this->set_post_data(
+			[
+				'attachments' => [
+					[
+						'url'         => $url,
+						'description' => $description,
+						'meta'        => [
+							'_wp_attachment_image_alt' => $alt_text,
+						],
+					],
+				],
+			]
+		);
+		$request->set_body( wp_json_encode( $params ) );
+		$response = rest_get_server()->dispatch( $request );
+
+		$data = $response->get_data();
+		$this->check_create_post_response( $response, $params );
+
+		$this->assertFalse( empty( $data['posts'][1]['post_id'] ) );
+		$this->assertSame(
+			$alt_text,
+			get_post_meta( $data['posts'][1]['post_id'], '_wp_attachment_image_alt', true )
+		);
 	}
 }

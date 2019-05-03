@@ -244,7 +244,15 @@ class REST_API extends \WP_REST_Controller {
 
 			// Save meta for the image.
 			if ( empty( $source['meta']['sst_source_id'] ) ) {
+				// If the source id is absent, set it to the image url.
 				$source['meta']['sst_source_id'] = $source['url'];
+			}
+			if (
+				empty( $source['meta']['_wp_attachment_image_alt'] )
+				&& ! empty( $source['description'] )
+			) {
+				// If the alt text is missing, set it to the description.
+				$source['meta']['_wp_attachment_image_alt'] = $source['description'];
 			}
 			$this->save_post_meta( $image_id, $source );
 
@@ -628,19 +636,7 @@ class REST_API extends \WP_REST_Controller {
 				'meta'           => [
 					'description'          => __( 'Meta fields.', 'sst' ),
 					'type'                 => 'object',
-					'additionalProperties' => false,
-					'patternProperties'    => [
-						'^.*$' => [
-							'anyOf' => [
-								[
-									'type' => 'string',
-								],
-								[
-									'type' => 'array',
-								],
-							],
-						],
-					],
+					'additionalProperties' => true,
 					'properties'           => [
 						'sst_source_id' => [
 							'type'        => 'string',
@@ -649,7 +645,7 @@ class REST_API extends \WP_REST_Controller {
 						],
 					],
 					'arg_options'          => [
-						'sanitize_callback' => null,
+						'sanitize_callback' => [ $this, 'sanitize_meta' ],
 						'validate_callback' => [ $this, 'check_meta_is_array' ],
 					],
 				],
@@ -671,19 +667,16 @@ class REST_API extends \WP_REST_Controller {
 							'meta'        => [
 								'description'          => __( 'Attachment meta fields.', 'sst' ),
 								'type'                 => 'object',
-								'properties'           => [],
-								'additionalProperties' => false,
-								'patternProperties'    => [
-									'^.*$' => [
-										'anyOf' => [
-											[
-												'type' => 'string',
-											],
-											[
-												'type' => 'array',
-											],
-										],
+								'properties'           => [
+									'sst_source_id' => [
+										'type'        => 'string',
+										'description' => __( 'The original source ID.', 'sst' ),
 									],
+								],
+								'additionalProperties' => true,
+								'arg_options'          => [
+									'sanitize_callback' => [ $this, 'sanitize_meta' ],
+									'validate_callback' => [ $this, 'check_meta_is_array' ],
 								],
 							],
 						],
@@ -718,6 +711,53 @@ class REST_API extends \WP_REST_Controller {
 	public function check_meta_is_array( $values ) {
 		if ( ! is_array( $values ) ) {
 			return false;
+		}
+
+		return $values;
+	}
+
+	/**
+	 * Sanitize the meta array for a post.
+	 *
+	 * @param  array            $values  The meta array.
+	 * @param  \WP_REST_Request $request The request object.
+	 * @param  string           $param   The parameter name.
+	 * @return array
+	 */
+	public function sanitize_meta( $values, $request, $param ) {
+		// Run a basic pass against the schema.
+		$values = rest_parse_request_arg( $values, $request, $param );
+
+		// Run a deeper sanitization of the formats of individual meta.
+		foreach ( $values as $meta_key => &$meta_value ) {
+			if ( ! is_string( $meta_key ) ) {
+				return new \WP_Error(
+					'sst-invalid-meta-key',
+					/* translators: 1: meta key */
+					sprintf( __( 'Invalid meta key %1$s', 'sst' ), $meta_key )
+				);
+			}
+			if ( ! is_scalar( $meta_value ) && ! wp_is_numeric_array( $meta_value ) ) {
+				return new \WP_Error(
+					'sst-invalid-meta-value',
+					/* translators: 1: meta key */
+					sprintf( __( 'Invalid meta value for key %1$s', 'sst' ), $meta_key )
+				);
+			}
+			if ( is_scalar( $meta_value ) ) {
+				$meta_value = strval( $meta_value );
+			} else {
+				foreach ( $meta_value as &$individual_value ) {
+					if ( ! is_scalar( $individual_value ) ) {
+						return new \WP_Error(
+							'sst-invalid-meta-value',
+							/* translators: 1: meta key */
+							sprintf( __( 'Invalid meta value for key %1$s', 'sst' ), $meta_key )
+						);
+					}
+					$individual_value = strval( $individual_value );
+				}
+			}
 		}
 
 		return $values;
