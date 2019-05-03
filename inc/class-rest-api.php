@@ -646,7 +646,7 @@ class REST_API extends \WP_REST_Controller {
 					],
 					'arg_options'          => [
 						'sanitize_callback' => [ $this, 'sanitize_meta' ],
-						'validate_callback' => [ $this, 'check_meta_is_array' ],
+						'validate_callback' => [ $this, 'validate_meta' ],
 					],
 				],
 				'attachments'    => [
@@ -676,7 +676,7 @@ class REST_API extends \WP_REST_Controller {
 								'additionalProperties' => true,
 								'arg_options'          => [
 									'sanitize_callback' => [ $this, 'sanitize_meta' ],
-									'validate_callback' => [ $this, 'check_meta_is_array' ],
+									'validate_callback' => [ $this, 'validate_meta' ],
 								],
 							],
 						],
@@ -708,9 +708,37 @@ class REST_API extends \WP_REST_Controller {
 	 * @param  mixed $values The meta value submitted in the request.
 	 * @return WP_Error|string The meta array, if valid, otherwise an error.
 	 */
-	public function check_meta_is_array( $values ) {
+	public function validate_meta( $values ) {
 		if ( ! is_array( $values ) ) {
 			return false;
+		}
+
+		foreach ( $values as $meta_key => $meta_value ) {
+			if ( ! is_string( $meta_key ) ) {
+				return new \WP_Error(
+					'sst-invalid-meta-key',
+					/* translators: 1: meta key */
+					sprintf( __( 'Invalid meta key %1$s. Meta keys must be strings.', 'sst' ), $meta_key )
+				);
+			}
+			if ( ! is_scalar( $meta_value ) && ! wp_is_numeric_array( $meta_value ) ) {
+				return new \WP_Error(
+					'sst-invalid-meta-value',
+					/* translators: 1: meta key */
+					sprintf( __( 'Invalid meta value for key %1$s. Meta values must either be numeric arrays or scalar values.', 'sst' ), $meta_key )
+				);
+			}
+			if ( is_array( $meta_value ) ) {
+				foreach ( $meta_value as $individual_value ) {
+					if ( ! is_scalar( $individual_value ) ) {
+						return new \WP_Error(
+							'sst-invalid-meta-value',
+							/* translators: 1: meta key */
+							sprintf( __( 'Invalid meta value for key %1$s. Meta values within arrays must be scalar values.', 'sst' ), $meta_key )
+						);
+					}
+				}
+			}
 		}
 
 		return $values;
@@ -730,31 +758,10 @@ class REST_API extends \WP_REST_Controller {
 
 		// Run a deeper sanitization of the formats of individual meta.
 		foreach ( $values as $meta_key => &$meta_value ) {
-			if ( ! is_string( $meta_key ) ) {
-				return new \WP_Error(
-					'sst-invalid-meta-key',
-					/* translators: 1: meta key */
-					sprintf( __( 'Invalid meta key %1$s', 'sst' ), $meta_key )
-				);
-			}
-			if ( ! is_scalar( $meta_value ) && ! wp_is_numeric_array( $meta_value ) ) {
-				return new \WP_Error(
-					'sst-invalid-meta-value',
-					/* translators: 1: meta key */
-					sprintf( __( 'Invalid meta value for key %1$s', 'sst' ), $meta_key )
-				);
-			}
 			if ( is_scalar( $meta_value ) ) {
 				$meta_value = strval( $meta_value );
 			} else {
 				foreach ( $meta_value as &$individual_value ) {
-					if ( ! is_scalar( $individual_value ) ) {
-						return new \WP_Error(
-							'sst-invalid-meta-value',
-							/* translators: 1: meta key */
-							sprintf( __( 'Invalid meta value for key %1$s', 'sst' ), $meta_key )
-						);
-					}
 					$individual_value = strval( $individual_value );
 				}
 			}

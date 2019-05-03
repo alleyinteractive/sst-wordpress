@@ -225,4 +225,69 @@ class Test_REST_API extends \WP_UnitTestCase {
 			get_post_meta( $data['posts'][1]['post_id'], '_wp_attachment_image_alt', true )
 		);
 	}
+
+	/**
+	 * Invalid meta cases to test meta validation.
+	 */
+	public function invalid_meta_cases() {
+		return [
+			[ // set 0.
+				[
+					'invalid array'  => [
+						'assoc' => 'assoc array is not valid here',
+					],
+				],
+			],
+			[ // set 1.
+				[
+					'invalid value' => (object) [
+						'key' => 'object values are not supported',
+					],
+				],
+			],
+			[ // set 2.
+				[
+					456  => 'invalid key',
+				],
+			],
+			[ // set 3.
+				[
+					'invalid array'  => [
+						[
+							'array is not valid here',
+						],
+					],
+				],
+			],
+		];
+	}
+
+	/**
+	 * @dataProvider invalid_meta_cases
+	 *
+	 * @param array $meta (Invalid) meta to set in request.
+	 */
+	public function test_invalid_meta( $meta ) {
+		wp_set_current_user( self::$admin_id );
+
+		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
+		$request->add_header( 'content-type', 'application/json' );
+
+		$params = [
+			'title' => 'Simple Post',
+			'type'  => 'sst-promise',
+			'meta'  => array_merge(
+				[
+					'sst_source_id' => 'basic-123',
+				],
+				$meta
+			),
+		];
+
+		$request->set_body( wp_json_encode( $params ) );
+		$response = rest_get_server()->dispatch( $request );
+		$this->assertEquals( 400, $response->get_status() );
+		$data = $response->get_data();
+		$this->assertSame( 'rest_invalid_param', $data['code'] );
+	}
 }
