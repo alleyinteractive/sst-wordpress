@@ -115,6 +115,26 @@ class Test_REST_API extends \WP_UnitTestCase {
 		$this->assertSame( $params['type'], $data['posts'][0]['post_type'] );
 	}
 
+	public function test_sst_permissions() {
+		wp_set_current_user( self::$editor_id );
+
+		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
+		$request->add_header( 'content-type', 'application/json' );
+
+		// Set the absolute minimum amount of data required to create a post.
+		$params = [
+			'title' => 'Simple Post',
+			'type'  => 'sst-promise',
+			'meta'  => [
+				'sst_source_id' => 'basic-123',
+			],
+		];
+
+		$request->set_body( wp_json_encode( $params ) );
+		$response = rest_get_server()->dispatch( $request );
+		$this->assertEquals( 403, $response->get_status() );
+	}
+
 	public function test_create_post() {
 		wp_set_current_user( self::$admin_id );
 
@@ -125,5 +145,26 @@ class Test_REST_API extends \WP_UnitTestCase {
 		$response = rest_get_server()->dispatch( $request );
 
 		$this->check_create_post_response( $response, $params );
+	}
+
+	public function test_post_with_attachments() {
+		wp_set_current_user( self::$admin_id );
+		$url = 'https://wpthemetestdata.files.wordpress.com/2008/06/canola2.jpg';
+
+		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
+		$request->add_header( 'content-type', 'application/json' );
+		$params = $this->set_post_data(
+			[
+				'attachments' => [ compact( 'url' ) ],
+			]
+		);
+		$request->set_body( wp_json_encode( $params ) );
+		$response = rest_get_server()->dispatch( $request );
+
+		$this->check_create_post_response( $response, $params );
+
+		$data = $response->get_data();
+		$this->assertFalse( empty( $data['posts'][1]['sst_source_id'] ) );
+		$this->assertSame( $url, $data['posts'][1]['sst_source_id'] );
 	}
 }

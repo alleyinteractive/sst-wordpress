@@ -148,13 +148,14 @@ class REST_API extends \WP_REST_Controller {
 	}
 
 	/**
-	 * Save post meta from an API request to a given post.
+	 * Save an array of post meta to a given post id.
 	 *
-	 * @param int              $post_id Post ID.
-	 * @param \WP_REST_Request $request REST request containing post meta.
+	 * @param int                    $post_id Post ID.
+	 * @param \WP_REST_Request|array $request REST request or array containing
+	 *                                        post meta.
 	 * @return bool True if meta is added, false if not.
 	 */
-	protected function save_post_meta( int $post_id, \WP_REST_Request $request ): bool {
+	protected function save_post_meta( int $post_id, $request ): bool {
 		if ( empty( $request['meta'] ) ) {
 			return false;
 		}
@@ -172,6 +173,63 @@ class REST_API extends \WP_REST_Controller {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Download images to a given post ID for a given REST request.
+	 *
+	 * @param int              $post_id Post ID to which to attach the images.
+	 * @param \WP_REST_Request $request REST API request containing the image
+	 *                                  data to download and save.
+	 * @return array Array of source urls and resulting ids, or source urls and
+	 *               resulting errors.
+	 */
+	protected function download_images( int $post_id, \WP_REST_Request $request ): array {
+		$return = [];
+
+		if ( empty( $request['attachments'] ) ) {
+			return $return;
+		}
+
+		foreach ( $request['attachments'] as $source ) {
+			if ( empty( $source['url'] ) ) {
+				$return[] = [
+					'source_url' => '',
+					'error'      => __( 'Attachment is missing source url.', 'sst' ),
+				];
+				continue;
+			}
+
+			// Download the image to WordPress.
+			$image_id = media_sideload_image(
+				$source['url'],
+				$post_id,
+				$source['description'] ?? '',
+				'id'
+			);
+
+			if ( is_wp_error( $image_id ) ) {
+				$return[] = [
+					'source_url' => $source['url'],
+					'error'      => $image_id->get_error_message(),
+				];
+				continue;
+			}
+			$image_id = intval( $image_id );
+
+			// Save meta for the image.
+			if ( empty( $source['meta']['sst_source_id'] ) ) {
+				$source['meta']['sst_source_id'] = $source['url'];
+			}
+			$this->save_post_meta( $image_id, $source );
+
+			$return[] = [
+				'source_url' => $source['url'],
+				'id'         => $image_id,
+			];
+		}
+
+		return $return;
 	}
 
 	/**
@@ -214,7 +272,9 @@ class REST_API extends \WP_REST_Controller {
 	 * @return WP_REST_Response|WP_Error Response object on success, or WP_Error object on failure.
 	 */
 	public function create_item( $request ) {
-		$created_objects = [];
+		$created_objects = [
+			'errors' => [],
+		];
 
 		// Validate the post to be inserted.
 		$prepared_post = $this->prepare_item_for_database( $request );
@@ -270,6 +330,19 @@ class REST_API extends \WP_REST_Controller {
 			$created_objects,
 			$post
 		);
+
+		// Download images and add to the response.
+		$attachments = $this->download_images( $post->ID, $request );
+		foreach ( $attachments as $attachment ) {
+			if ( ! empty( $attachment['id'] ) ) {
+				$created_objects = $this->add_object_to_response(
+					$created_objects,
+					get_post( $attachment['id'] )
+				);
+			} elseif ( ! empty( $attachment['error'] ) ) {
+				$created_objects['errors'][] = $attachment;
+			}
+		}
 
 		// Set the API response.
 		$api_response = rest_ensure_response( $created_objects );
@@ -559,7 +632,36 @@ class REST_API extends \WP_REST_Controller {
 					'description' => __( 'Post attachments (URLs) to download.', 'sst' ),
 					'type'        => 'array',
 					'items'       => [
-						'type' => 'string',
+						'type'       => 'object',
+						'properties' => [
+							'url'         => [
+								'type'        => 'string',
+								'required'    => true,
+								'description' => __( 'The URL for the attachment.', 'sst' ),
+							],
+							'description' => [
+								'type'        => 'string',
+								'description' => __( 'The image description (used as alt text).', 'sst' ),
+							],
+							'meta'        => [
+								'description'          => __( 'Attachment meta fields.', 'sst' ),
+								'type'                 => 'object',
+								'properties'           => [],
+								'additionalProperties' => false,
+								'patternProperties'    => [
+									'^.*$' => [
+										'anyOf' => [
+											[
+												'type' => 'string',
+											],
+											[
+												'type' => 'array',
+											],
+										],
+									],
+								],
+							],
+						],
 					],
 				],
 			],
