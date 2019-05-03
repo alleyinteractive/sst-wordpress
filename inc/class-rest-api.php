@@ -176,6 +176,31 @@ class REST_API extends \WP_REST_Controller {
 	}
 
 	/**
+	 * Downloads an image from the specified URL and attaches it to a post.
+	 *
+	 * This is a wrapper for core's `media_sideload_image()`, but it first
+	 * ensures that the function exists and if not, loads the requisite files.
+	 *
+	 * @see \media_sideload_image()
+	 *
+	 * @param string $file    The URL of the image to download.
+	 * @param int    $post_id The post ID the media is to be associated with.
+	 * @param string $desc    Optional. Description of the image.
+	 * @param string $return  Optional. Accepts 'html' (image tag html) or 'src'
+	 *                        (URL), or 'id' (attachment ID). Default 'html'.
+	 * @return string|WP_Error Populated HTML img tag on success, WP_Error
+	 *                         object otherwise.
+	 */
+	protected function media_sideload_image( $file, $post_id, $desc = null, $return = 'html' ) {
+		if ( ! function_exists( 'media_sideload_image' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+			require_once ABSPATH . 'wp-admin/includes/image.php';
+			require_once ABSPATH . 'wp-admin/includes/media.php';
+		}
+		return media_sideload_image( $file, $post_id, $desc, $return );
+	}
+
+	/**
 	 * Download images to a given post ID for a given REST request.
 	 *
 	 * @param int              $post_id Post ID to which to attach the images.
@@ -201,7 +226,7 @@ class REST_API extends \WP_REST_Controller {
 			}
 
 			// Download the image to WordPress.
-			$image_id = media_sideload_image(
+			$image_id = $this->media_sideload_image(
 				$source['url'],
 				$post_id,
 				$source['description'] ?? '',
