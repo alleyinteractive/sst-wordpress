@@ -246,6 +246,63 @@ class Test_REST_API extends \WP_UnitTestCase {
 	}
 
 	/**
+	 * Invalid reference cases to test reference validation.
+	 */
+	public function invalid_reference_cases() {
+		return [
+			[ // set 0.
+				[
+					'type'          => 'post',
+					'subtype'       => 'invalid post type',
+					'sst_source_id' => 'abc-123',
+				],
+			],
+			[ // set 1.
+				[
+					'type'          => 'taxonomy',
+					'subtype'       => 'invalid taxonomy',
+					'sst_source_id' => 'abc-123',
+				],
+			],
+			[ // set 2.
+				[
+					'type'          => 'invalid type',
+					'subtype'       => 'pointless',
+					'sst_source_id' => 'abc-123',
+				],
+			],
+			[ // set 3.
+				[
+					'type'    => 'post',
+					'subtype' => 'post',
+				],
+			],
+		];
+	}
+
+	/**
+	 * @dataProvider invalid_reference_cases
+	 *
+	 * @param array $reference (Invalid) reference to set in request.
+	 */
+	public function test_invalid_references( $reference ) {
+		wp_set_current_user( self::$admin_id );
+
+		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
+		$request->add_header( 'content-type', 'application/json' );
+		$params = $this->set_post_data(
+			[
+				'references' => [ $reference ],
+			]
+		);
+		$request->set_body( wp_json_encode( $params ) );
+		$response = rest_get_server()->dispatch( $request );
+		$this->assertEquals( 400, $response->get_status() );
+		$data = $response->get_data();
+		$this->assertSame( 'rest_invalid_param', $data['code'] );
+	}
+
+	/**
 	 * Invalid meta cases to test meta validation.
 	 */
 	public function invalid_meta_cases() {
@@ -303,63 +360,6 @@ class Test_REST_API extends \WP_UnitTestCase {
 			),
 		];
 
-		$request->set_body( wp_json_encode( $params ) );
-		$response = rest_get_server()->dispatch( $request );
-		$this->assertEquals( 400, $response->get_status() );
-		$data = $response->get_data();
-		$this->assertSame( 'rest_invalid_param', $data['code'] );
-	}
-
-	/**
-	 * Invalid meta cases to test meta validation.
-	 */
-	public function invalid_reference_cases() {
-		return [
-			[ // set 0.
-				[
-					'type'          => 'post',
-					'subtype'       => 'invalid post type',
-					'sst_source_id' => 'abc-123',
-				],
-			],
-			[ // set 1.
-				[
-					'type'          => 'taxonomy',
-					'subtype'       => 'invalid taxonomy',
-					'sst_source_id' => 'abc-123',
-				],
-			],
-			[ // set 2.
-				[
-					'type'          => 'invalid type',
-					'subtype'       => 'pointless',
-					'sst_source_id' => 'abc-123',
-				],
-			],
-			[ // set 3.
-				[
-					'type'    => 'post',
-					'subtype' => 'post',
-				],
-			],
-		];
-	}
-
-	/**
-	 * @dataProvider invalid_reference_cases
-	 *
-	 * @param array $meta (Invalid) meta to set in request.
-	 */
-	public function test_invalid_references( $reference ) {
-		wp_set_current_user( self::$admin_id );
-
-		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
-		$request->add_header( 'content-type', 'application/json' );
-		$params = $this->set_post_data(
-			[
-				'references' => [ $reference ],
-			]
-		);
 		$request->set_body( wp_json_encode( $params ) );
 		$response = rest_get_server()->dispatch( $request );
 		$this->assertEquals( 400, $response->get_status() );
