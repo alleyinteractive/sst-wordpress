@@ -212,18 +212,24 @@ class REST_API extends \WP_REST_Controller {
 	protected function download_images( int $post_id, \WP_REST_Request $request ): array {
 		$return = [];
 
-		if ( empty( $request['attachments'] ) ) {
+		if ( empty( $request['references'] ) ) {
 			return $return;
 		}
 
-		foreach ( $request['attachments'] as $source ) {
-			if ( empty( $source['url'] ) ) {
-				$return[] = [
-					'source_url' => '',
-					'error'      => __( 'Attachment is missing source url.', 'sst' ),
-				];
+		foreach ( $request['references'] as $reference ) {
+			// Skip this reference if it is not an attachment.
+			if (
+				'post' !== $reference['type']
+				|| 'attachment' !== $reference['subtype']
+				|| empty( $reference['args']['url'] )
+			) {
 				continue;
 			}
+
+			$source = $reference['args'];
+
+			// Move the source id to meta.
+			$source['meta']['sst_source_id'] = $reference['sst_source_id'];
 
 			// Download the image to WordPress.
 			$image_id = $this->media_sideload_image(
@@ -243,10 +249,6 @@ class REST_API extends \WP_REST_Controller {
 			$image_id = intval( $image_id );
 
 			// Save meta for the image.
-			if ( empty( $source['meta']['sst_source_id'] ) ) {
-				// If the source id is absent, set it to the image url.
-				$source['meta']['sst_source_id'] = $source['url'];
-			}
 			if (
 				empty( $source['meta']['_wp_attachment_image_alt'] )
 				&& ! empty( $source['description'] )
@@ -257,8 +259,9 @@ class REST_API extends \WP_REST_Controller {
 			$this->save_post_meta( $image_id, $source );
 
 			$return[] = [
-				'source_url' => $source['url'],
-				'id'         => $image_id,
+				'sst_source_id' => $source['meta']['sst_source_id'],
+				'source_url'    => $source['url'],
+				'id'            => $image_id,
 			];
 		}
 
@@ -449,7 +452,7 @@ class REST_API extends \WP_REST_Controller {
 		// Remove fields that shouldn't be passed to the saved post.
 		unset(
 			// Attachments will be downloaded separately.
-			$post_data['attachments'],
+			$post_data['references'],
 			// Post type is used to determine which core endpoint gets dispatched.
 			$post_data['type'],
 			// Meta is saved separately to allow for unregistered meta.
@@ -525,6 +528,9 @@ class REST_API extends \WP_REST_Controller {
 	 * @return array Item schema data.
 	 */
 	public function get_item_schema() {
+		$available_post_types = array_values( get_post_types() );
+		$taxonomies           = get_taxonomies( [], 'objects' );
+
 		$schema = [
 			'$schema'    => 'http://json-schema.org/draft-04/schema#',
 			'title'      => 'sst-post',
@@ -556,7 +562,7 @@ class REST_API extends \WP_REST_Controller {
 				'type'           => [
 					'description' => __( 'Type of Post for the object.', 'sst' ),
 					'type'        => 'string',
-					'enum'        => array_values( get_post_types() ),
+					'enum'        => $available_post_types,
 					'required'    => true,
 				],
 				'parent'         => [
@@ -649,43 +655,67 @@ class REST_API extends \WP_REST_Controller {
 						'validate_callback' => [ $this, 'validate_meta' ],
 					],
 				],
-				'attachments'    => [
-					'description' => __( 'Post attachments (URLs) to download.', 'sst' ),
+				'references'     => [
+					'description' => __( 'Post references to create.', 'sst' ),
 					'type'        => 'array',
 					'items'       => [
 						'type'       => 'object',
 						'properties' => [
-							'url'         => [
+							'type'          => [
+								'description' => __( 'The object type.', 'sst' ),
 								'type'        => 'string',
 								'required'    => true,
-								'description' => __( 'The URL for the attachment.', 'sst' ),
-							],
-							'description' => [
-								'type'        => 'string',
-								'description' => __( 'The image description (used as alt text).', 'sst' ),
-							],
-							'meta'        => [
-								'description'          => __( 'Attachment meta fields.', 'sst' ),
-								'type'                 => 'object',
-								'properties'           => [
-									'sst_source_id' => [
-										'type'        => 'string',
-										'description' => __( 'The original source ID.', 'sst' ),
-									],
+								'enum'        => [
+									'post',
+									'term',
 								],
-								'additionalProperties' => true,
-								'arg_options'          => [
-									'sanitize_callback' => [ $this, 'sanitize_meta' ],
-									'validate_callback' => [ $this, 'validate_meta' ],
+							],
+							'subtype'       => [
+								'description' => __( 'The object subtype (post type or taxonomy).', 'sst' ),
+								'type'        => 'string',
+								'required'    => true,
+								'enum'        => array_merge(
+									$available_post_types,
+									array_keys( $taxonomies )
+								),
+							],
+							'sst_source_id' => [
+								'description' => __( 'The original source ID.', 'sst' ),
+								'type'        => 'string',
+								'required'    => true,
+							],
+							'args'          => [
+								'description' => __( 'Arguments for creating the reference.', 'sst' ),
+								'type'        => 'object',
+								'properties'  => [
+									'url'         => [
+										'description' => __( 'The URL for an attachment, if this reference is an attachment.', 'sst' ),
+										'type'        => 'string',
+									],
+									'description' => [
+										'description' => __( 'The image description (used as alt text), if this reference is an attachment.', 'sst' ),
+										'type'        => 'string',
+									],
+									'meta'        => [
+										'description' => __( 'Meta to add to posts or terms created.', 'sst' ),
+										'type'        => 'object',
+										'arg_options' => [
+											'sanitize_callback' => [ $this, 'sanitize_meta' ],
+											'validate_callback' => [ $this, 'validate_meta' ],
+										],
+									],
 								],
 							],
 						],
+					],
+					'arg_options' => [
+						// 'sanitize_callback' => [ $this, 'sanitize_references' ],
+						'validate_callback' => [ $this, 'validate_references' ],
 					],
 				],
 			],
 		];
 
-		$taxonomies = get_taxonomies( [], 'objects' );
 		foreach ( $taxonomies as $taxonomy ) {
 			$base = ! empty( $taxonomy->rest_base ) ? $taxonomy->rest_base : $taxonomy->name;
 
@@ -703,9 +733,9 @@ class REST_API extends \WP_REST_Controller {
 	}
 
 	/**
-	 * Check the 'meta' value of a request is an associative array.
+	 * Check the 'meta' value of a request is in the proper format.
 	 *
-	 * @param  mixed $values The meta value submitted in the request.
+	 * @param mixed $values The meta value submitted in the request.
 	 * @return WP_Error|string The meta array, if valid, otherwise an error.
 	 */
 	public function validate_meta( $values ) {
@@ -741,15 +771,15 @@ class REST_API extends \WP_REST_Controller {
 			}
 		}
 
-		return $values;
+		return true;
 	}
 
 	/**
 	 * Sanitize the meta array for a post.
 	 *
-	 * @param  array            $values  The meta array.
-	 * @param  \WP_REST_Request $request The request object.
-	 * @param  string           $param   The parameter name.
+	 * @param array            $values  The meta array.
+	 * @param \WP_REST_Request $request The request object.
+	 * @param string           $param   The parameter name.
 	 * @return array
 	 */
 	public function sanitize_meta( $values, $request, $param ) {
@@ -757,7 +787,7 @@ class REST_API extends \WP_REST_Controller {
 		$values = rest_parse_request_arg( $values, $request, $param );
 
 		// Run a deeper sanitization of the formats of individual meta.
-		foreach ( $values as $meta_key => &$meta_value ) {
+		foreach ( $values as &$meta_value ) {
 			if ( is_scalar( $meta_value ) ) {
 				$meta_value = strval( $meta_value );
 			} else {
@@ -768,5 +798,35 @@ class REST_API extends \WP_REST_Controller {
 		}
 
 		return $values;
+	}
+
+	/**
+	 * Check that the references in a request is in the proper format.
+	 *
+	 * @param mixed            $values  The meta value submitted in the request.
+	 * @param \WP_REST_Request $request The request object.
+	 * @param string           $param   The parameter name.
+	 * @return WP_Error|string The meta array, if valid, otherwise an error.
+	 */
+	public function validate_references( $values, $request, $param ) {
+		$schema_validation = rest_validate_request_arg( $values, $request, $param );
+		if ( true !== $schema_validation ) {
+			return $schema_validation;
+		}
+
+		foreach ( $values as $ref ) {
+			if (
+				empty( $ref['type'] )
+				|| empty( $ref['subtype'] )
+				|| empty( $ref['sst_source_id'] )
+			) {
+				return new \WP_Error(
+					'sst-invalid-reference',
+					__( 'Invalid reference; type, subtype, and sst_source_id are required properties.', 'sst' )
+				);
+			}
+		}
+
+		return true;
 	}
 }
