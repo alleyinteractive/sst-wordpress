@@ -989,7 +989,8 @@ class REST_API extends \WP_REST_Controller {
 		}
 
 		foreach ( $values as $ref ) {
-			if ( // Ensure type and subtype are set.
+			// Ensure type and subtype are set.
+			if (
 				empty( $ref['type'] )
 				|| empty( $ref['subtype'] )
 			) {
@@ -997,7 +998,10 @@ class REST_API extends \WP_REST_Controller {
 					'sst-invalid-reference',
 					__( 'Invalid reference; type, subtype, and sst_source_id are required properties.', 'sst' )
 				);
-			} elseif ( // Ensure posts have an sst_source_id.
+			}
+
+			// Ensure posts have an sst_source_id.
+			if (
 				'post' === $ref['type']
 				&& 'attachment' !== $ref['subtype']
 				&& empty( $ref['sst_source_id'] )
@@ -1006,7 +1010,10 @@ class REST_API extends \WP_REST_Controller {
 					'sst-invalid-reference',
 					__( 'Invalid reference; sst_source_id is a required property for non-attachment posts.', 'sst' )
 				);
-			} elseif ( // Ensure attachments have urls.
+			}
+
+			// Ensure attachments have urls.
+			if (
 				'post' === $ref['type']
 				&& 'attachment' === $ref['subtype']
 				&& empty( $ref['args']['url'] )
@@ -1015,7 +1022,10 @@ class REST_API extends \WP_REST_Controller {
 					'attachment-missing-url',
 					__( 'Reference attachment missing args.url', 'sst' )
 				);
-			} elseif ( // Ensure terms have titles.
+			}
+
+			// Ensure terms have titles.
+			if (
 				'term' === $ref['type']
 				&& empty( $ref['args']['title'] )
 			) {
