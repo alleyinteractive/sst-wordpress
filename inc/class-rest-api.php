@@ -176,6 +176,34 @@ class REST_API extends \WP_REST_Controller {
 	}
 
 	/**
+	 * Save an array of term meta to a given term id.
+	 *
+	 * @param int                    $term_id Term ID.
+	 * @param \WP_REST_Request|array $request REST request or array containing
+	 *                                        term meta.
+	 * @return bool True if meta is added, false if not.
+	 */
+	protected function save_term_meta( int $term_id, $request ): bool {
+		if ( empty( $request['meta'] ) ) {
+			return false;
+		}
+
+		foreach ( $request['meta'] as $key => $values ) {
+			// Discern between single values and multiple.
+			if ( is_array( $values ) ) {
+				delete_term_meta( $term_id, $key );
+				foreach ( $values as $value ) {
+					add_term_meta( $term_id, $key, $value );
+				}
+			} else {
+				update_term_meta( $term_id, $key, $values );
+			}
+		}
+
+		return true;
+	}
+
+	/**
 	 * Downloads an image from the specified URL and attaches it to a post.
 	 *
 	 * This is a wrapper for core's `media_sideload_image()`, but it first
@@ -208,13 +236,6 @@ class REST_API extends \WP_REST_Controller {
 	 * @return \WP_Error|\WP_Post Post object on success, WP_Error on failure.
 	 */
 	protected function download_image( int $post_id, array $reference ) {
-		if ( empty( $reference['args']['url'] ) ) {
-			return new \WP_Error(
-				'attachment-missing-url',
-				__( 'Reference attachment missing args.url', 'sst' )
-			);
-		}
-
 		$source = $reference['args'];
 
 		// Move the source id to meta.
@@ -253,7 +274,7 @@ class REST_API extends \WP_REST_Controller {
 	 * @return \WP_Error|\WP_Post Post object on success, WP_Error on failure.
 	 */
 	protected function create_ref_post( array $reference ) {
-		$source              = $reference['args'];
+		$source = $reference['args'];
 
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $reference['sst_source_id'];
@@ -273,6 +294,51 @@ class REST_API extends \WP_REST_Controller {
 		$this->save_post_meta( $post_id, $source );
 
 		return get_post( $post_id );
+	}
+
+	/**
+	 * Create a reference term.
+	 *
+	 * @param array $reference References array entry.
+	 * @param int   $post_id   Post ID to which to attach the term.
+	 * @return \WP_Error|\WP_Term Term object on success, WP_Error on failure.
+	 */
+	protected function create_ref_term( array $reference, int $post_id ) {
+		$source = $reference['args'];
+
+		// Move the source id to meta.
+		if ( ! empty( $reference['sst_source_id'] ) ) {
+			$source['meta']['sst_source_id'] = $reference['sst_source_id'];
+		}
+
+		$name     = $source['title'] ?? $reference['sst_source_id'];
+		$taxonomy = $reference['subtype'];
+
+		// Allow for setting the parent and the slug.
+		$args = [];
+		if ( ! empty( $source['parent'] ) ) {
+			$args['parent'] = $source['parent'];
+		}
+		if ( ! empty( $source['slug'] ) ) {
+			$args['slug'] = $source['slug'];
+		}
+
+		$term = wp_insert_term( $name, $taxonomy, $args );
+		if ( is_wp_error( $term ) ) {
+			return $term;
+		}
+		$term_id = $term['term_id'];
+
+		// Set the term to the post.
+		$result = wp_set_object_terms( $post_id, $term_id, $taxonomy, true );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		// Save meta for the term.
+		$this->save_term_meta( $term_id, $source );
+
+		return get_term( $term_id );
 	}
 
 	/**
@@ -336,7 +402,7 @@ class REST_API extends \WP_REST_Controller {
 			} elseif ( 'post' === $reference['type'] ) {
 				$result = $this->create_ref_post( $reference );
 			} elseif ( 'term' === $reference['type'] ) {
-				$result = $this->create_ref_term( $reference );
+				$result = $this->create_ref_term( $reference, $post_id );
 			} else {
 				$result = new \WP_Error(
 					'invalid-ref',
@@ -789,23 +855,22 @@ class REST_API extends \WP_REST_Controller {
 								),
 							],
 							'sst_source_id' => [
-								'description' => __( 'The original source ID.', 'sst' ),
+								'description' => __( 'The original source ID. Required if the type is "post" and the subtype is not "attachment", optional otherwise.', 'sst' ),
 								'type'        => 'string',
-								'required'    => true,
 							],
 							'args'          => [
 								'description' => __( 'Arguments for creating the reference.', 'sst' ),
 								'type'        => 'object',
 								'properties'  => [
-									'url'         => [
+									'url'   => [
 										'description' => __( 'The URL for an attachment, if this reference is an attachment.', 'sst' ),
 										'type'        => 'string',
 									],
-									'title'       => [
+									'title' => [
 										'description' => __( 'The post or term title, if this is a post or term, or image description (which alt text inherits unless set explicitly) if this is an attachment.', 'sst' ),
 										'type'        => 'string',
 									],
-									'meta'        => [
+									'meta'  => [
 										'description' => __( 'Meta to add to posts or terms created.', 'sst' ),
 										'type'        => 'object',
 										'arg_options' => [
@@ -924,14 +989,39 @@ class REST_API extends \WP_REST_Controller {
 		}
 
 		foreach ( $values as $ref ) {
-			if (
+			if ( // Ensure type and subtype are set.
 				empty( $ref['type'] )
 				|| empty( $ref['subtype'] )
-				|| empty( $ref['sst_source_id'] )
 			) {
 				return new \WP_Error(
 					'sst-invalid-reference',
 					__( 'Invalid reference; type, subtype, and sst_source_id are required properties.', 'sst' )
+				);
+			} elseif ( // Ensure posts have an sst_source_id.
+				'post' === $ref['type']
+				&& 'attachment' !== $ref['subtype']
+				&& empty( $ref['sst_source_id'] )
+			) {
+				return new \WP_Error(
+					'sst-invalid-reference',
+					__( 'Invalid reference; sst_source_id is a required property for non-attachment posts.', 'sst' )
+				);
+			} elseif ( // Ensure attachments have urls.
+				'post' === $ref['type']
+				&& 'attachment' === $ref['subtype']
+				&& empty( $ref['args']['url'] )
+			) {
+				return new \WP_Error(
+					'attachment-missing-url',
+					__( 'Reference attachment missing args.url', 'sst' )
+				);
+			} elseif ( // Ensure terms have titles.
+				'term' === $ref['type']
+				&& empty( $ref['args']['title'] )
+			) {
+				return new \WP_Error(
+					'term-missing-title',
+					__( 'Reference term missing args.title', 'sst' )
 				);
 			}
 		}
@@ -955,6 +1045,15 @@ class REST_API extends \WP_REST_Controller {
 		foreach ( $values as &$ref ) {
 			if ( empty( $ref['args'] ) || ! is_array( $ref['args'] ) ) {
 				$ref['args'] = [];
+			}
+
+			// Ensure that attachments get sst_source_id, defaulting to url.
+			if (
+				'post' === $ref['type']
+				&& 'attachment' === $ref['subtype']
+				&& empty( $ref['sst_source_id'] )
+			) {
+				$ref['sst_source_id'] = $ref['args']['url'];
 			}
 		}
 

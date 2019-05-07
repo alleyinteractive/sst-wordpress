@@ -33,6 +33,8 @@ class Test_REST_API extends \WP_UnitTestCase {
 	}
 
 	public function setUp() {
+		parent::setUp();
+
 		global $wp_rest_server;
 		$wp_rest_server = new \Spy_REST_Server();
 		do_action( 'rest_api_init' );
@@ -158,7 +160,6 @@ class Test_REST_API extends \WP_UnitTestCase {
 					[
 						'type'          => 'post',
 						'subtype'       => 'attachment',
-						'sst_source_id' => $url,
 						'args'          => compact( 'url' ),
 					],
 				],
@@ -259,7 +260,7 @@ class Test_REST_API extends \WP_UnitTestCase {
 			],
 			[ // set 1.
 				[
-					'type'          => 'taxonomy',
+					'type'          => 'term',
 					'subtype'       => 'invalid taxonomy',
 					'sst_source_id' => 'abc-123',
 				],
@@ -275,6 +276,26 @@ class Test_REST_API extends \WP_UnitTestCase {
 				[
 					'type'    => 'post',
 					'subtype' => 'post',
+				],
+			],
+			[ // set 4.
+				[
+					'type'          => 'post',
+					'subtype'       => 'attachment',
+					'sst_source_id' => 'abc-123',
+				],
+			],
+			[ // set 5.
+				[
+					'type'          => 'term',
+					'subtype'       => 'post_tag',
+				],
+			],
+			[ // set 6.
+				[
+					'type'          => 'term',
+					'subtype'       => 'post_tag',
+					'sst_source_id' => 'abc-123',
 				],
 			],
 		];
@@ -395,5 +416,91 @@ class Test_REST_API extends \WP_UnitTestCase {
 		$this->assertSame( $source_id, $data['posts'][1]['sst_source_id'] );
 		$this->assertSame( $source_id, get_the_title( $data['posts'][1]['post_id'] ) );
 		$this->assertSame( 'page', get_post_type( $data['posts'][1]['post_id'] ) );
+	}
+
+	public function test_post_with_ref_terms() {
+		wp_set_current_user( self::$admin_id );
+		$title = 'term-123';
+
+		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
+		$request->add_header( 'content-type', 'application/json' );
+		$params = $this->set_post_data(
+			[
+				'references' => [
+					[
+						'type'    => 'term',
+						'subtype' => 'post_tag',
+						'args'    => [
+							'title' => $title,
+						],
+					],
+				],
+			]
+		);
+		$request->set_body( wp_json_encode( $params ) );
+		$response = rest_get_server()->dispatch( $request );
+
+		$this->check_create_post_response( $response, $params );
+
+		$data = $response->get_data();
+		$this->assertFalse( empty( $data['terms'][0]['term_id'] ) );
+
+		// Assert that the term was created.
+		$term = get_term( $data['terms'][0]['term_id'] );
+		$this->assertInstanceOf( '\WP_Term', $term );
+		$this->assertSame( $title, $term->name );
+		$this->assertSame( $title, $term->slug );
+		$this->assertSame( 'post_tag', $term->taxonomy );
+
+		// Assert that the term is attached to the post.
+		$this->assertFalse( empty( $data['posts'][0]['post_id'] ) );
+		$this->assertSame(
+			[ $term->term_id ],
+			wp_list_pluck(
+				get_the_terms( $data['posts'][0]['post_id'], 'post_tag' ),
+				'term_id'
+			)
+		);
+	}
+
+	public function test_post_with_ref_terms_with_term_meta() {
+		wp_set_current_user( self::$admin_id );
+
+		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
+		$request->add_header( 'content-type', 'application/json' );
+		$params = $this->set_post_data(
+			[
+				'references' => [
+					[
+						'type'          => 'term',
+						'subtype'       => 'post_tag',
+						'sst_source_id' => 'upstream-123',
+						'args'          => [
+							'title' => 'term-123',
+							'meta'  => [
+								'test-key' => 'test value',
+							],
+						],
+					],
+				],
+			]
+		);
+		$request->set_body( wp_json_encode( $params ) );
+		$response = rest_get_server()->dispatch( $request );
+
+		$this->check_create_post_response( $response, $params );
+
+		$data = $response->get_data();
+		$this->assertFalse( empty( $data['terms'][0]['term_id'] ) );
+		$term_id = $data['terms'][0]['term_id'];
+
+		$this->assertSame(
+			'upstream-123',
+			get_term_meta( $term_id, 'sst_source_id', true )
+		);
+		$this->assertSame(
+			'test value',
+			get_term_meta( $term_id, 'test-key', true )
+		);
 	}
 }
