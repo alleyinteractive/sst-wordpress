@@ -224,7 +224,7 @@ class REST_API extends \WP_REST_Controller {
 		$image_id = $this->media_sideload_image(
 			$source['url'],
 			$post_id,
-			$source['description'] ?? '',
+			$source['title'] ?? '',
 			'id'
 		);
 
@@ -236,14 +236,43 @@ class REST_API extends \WP_REST_Controller {
 		// Save meta for the image.
 		if (
 			empty( $source['meta']['_wp_attachment_image_alt'] )
-			&& ! empty( $source['description'] )
+			&& ! empty( $source['title'] )
 		) {
-			// If the alt text is missing, set it to the description.
-			$source['meta']['_wp_attachment_image_alt'] = $source['description'];
+			// If the alt text is missing, set it to the title.
+			$source['meta']['_wp_attachment_image_alt'] = $source['title'];
 		}
 		$this->save_post_meta( $image_id, $source );
 
 		return get_post( $image_id );
+	}
+
+	/**
+	 * Create a reference post.
+	 *
+	 * @param array $reference References array entry.
+	 * @return \WP_Error|\WP_Post Post object on success, WP_Error on failure.
+	 */
+	protected function create_ref_post( array $reference ) {
+		$source              = $reference['args'];
+
+		// Move the source id to meta.
+		$source['meta']['sst_source_id'] = $reference['sst_source_id'];
+
+		$post_arr = [
+			'post_title' => $source['title'] ?? $reference['sst_source_id'],
+			'post_type'  => $reference['subtype'],
+		];
+
+		$post_id = wp_insert_post( $post_arr, true );
+
+		if ( is_wp_error( $post_id ) ) {
+			return $post_id;
+		}
+
+		// Save meta for the post.
+		$this->save_post_meta( $post_id, $source );
+
+		return get_post( $post_id );
 	}
 
 	/**
@@ -253,8 +282,9 @@ class REST_API extends \WP_REST_Controller {
 	 *                                  references.
 	 * @param \WP_REST_Request $request REST API request containing the
 	 *                                  references to create.
-	 * @return array Array of source urls and resulting ids, or source urls and
-	 *               resulting errors.
+	 * @return array Array containing a mix of \WP_Post, \WP_Term, and \WP_Error
+	 *               objects, depending on the type of reference and if it is
+	 *               successfully created or not.
 	 */
 	protected function create_refs( int $post_id, \WP_REST_Request $request ): array {
 		$return = [];
@@ -264,12 +294,83 @@ class REST_API extends \WP_REST_Controller {
 		}
 
 		foreach ( $request['references'] as $reference ) {
+			/**
+			 * Allow external code to short-circuit ref creation.
+			 *
+			 * @param mixed            $result    If this is anything other than
+			 *                                    null, the reference will be
+			 *                                    skipped. If the returned value
+			 *                                    is an object, it will be
+			 *                                    included in the API response
+			 *                                    as a created object.
+			 * @param array            $reference References array entry.
+			 * @param int              $post_id   Post ID containing the
+			 *                                    reference.
+			 * @param \WP_REST_Request $request   REST API request containing
+			 *                                    the references to create.
+			 */
+			$result = apply_filters(
+				'sst_before_create_ref',
+				null,
+				$reference,
+				$post_id,
+				$request
+			);
+			if ( null !== $result ) {
+				if (
+					is_wp_error( $result )
+					|| $result instanceof \WP_Post
+					|| $result instanceof \WP_Term
+				) {
+					$return[] = $result;
+				}
+				continue;
+			}
+
 			// Handle attachments separately.
 			if (
 				'post' === $reference['type']
 				&& 'attachment' === $reference['subtype']
 			) {
-				$return[] = $this->download_image( $post_id, $reference );
+				$result = $this->download_image( $post_id, $reference );
+			} elseif ( 'post' === $reference['type'] ) {
+				$result = $this->create_ref_post( $reference );
+			} elseif ( 'term' === $reference['type'] ) {
+				$result = $this->create_ref_term( $reference );
+			} else {
+				$result = new \WP_Error(
+					'invalid-ref',
+					__( 'Invalid ref', 'sst' )
+				);
+			}
+
+			/**
+			 * Filter created ref post, term, or resulting error.
+			 *
+			 * @param object           $result    The created ref object
+			 *                                    (\WP_Post or \WP_Term) or the
+			 *                                    resulting \WP_Error object.
+			 * @param array            $reference References array entry.
+			 * @param int              $post_id   Post ID containing the
+			 *                                    reference.
+			 * @param \WP_REST_Request $request   REST API request containing
+			 *                                    the references to create.
+			 */
+			$result = apply_filters(
+				'sst_after_create_ref',
+				$result,
+				$reference,
+				$post_id,
+				$request
+			);
+
+			// Only include posts, terms, and errors in the return array.
+			if (
+				is_wp_error( $result )
+				|| $result instanceof \WP_Post
+				|| $result instanceof \WP_Term
+			) {
+				$return[] = $result;
 			}
 		}
 
@@ -700,8 +801,8 @@ class REST_API extends \WP_REST_Controller {
 										'description' => __( 'The URL for an attachment, if this reference is an attachment.', 'sst' ),
 										'type'        => 'string',
 									],
-									'description' => [
-										'description' => __( 'The image description (used as alt text), if this reference is an attachment.', 'sst' ),
+									'title'       => [
+										'description' => __( 'The post or term title, if this is a post or term, or image description (which alt text inherits unless set explicitly) if this is an attachment.', 'sst' ),
 										'type'        => 'string',
 									],
 									'meta'        => [
@@ -717,7 +818,7 @@ class REST_API extends \WP_REST_Controller {
 						],
 					],
 					'arg_options' => [
-						// 'sanitize_callback' => [ $this, 'sanitize_references' ],
+						'sanitize_callback' => [ $this, 'sanitize_references' ],
 						'validate_callback' => [ $this, 'validate_references' ],
 					],
 				],
@@ -836,5 +937,27 @@ class REST_API extends \WP_REST_Controller {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Sanitize the references array for a post.
+	 *
+	 * @param array            $values  The references array.
+	 * @param \WP_REST_Request $request The request object.
+	 * @param string           $param   The parameter name.
+	 * @return array
+	 */
+	public function sanitize_references( $values, $request, $param ) {
+		// Run a basic pass against the schema.
+		$values = rest_sanitize_request_arg( $values, $request, $param );
+
+		// Run a deeper sanitization.
+		foreach ( $values as &$ref ) {
+			if ( empty( $ref['args'] ) || ! is_array( $ref['args'] ) ) {
+				$ref['args'] = [];
+			}
+		}
+
+		return $values;
 	}
 }

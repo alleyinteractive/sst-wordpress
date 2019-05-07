@@ -176,8 +176,8 @@ class Test_REST_API extends \WP_UnitTestCase {
 
 	public function test_attachment_alt_text_inherted_from_desc() {
 		wp_set_current_user( self::$admin_id );
-		$url         = 'https://wpthemetestdata.files.wordpress.com/2008/06/canola2.jpg';
-		$description = 'Alt text should inherit description';
+		$url   = 'https://wpthemetestdata.files.wordpress.com/2008/06/canola2.jpg';
+		$title = 'Alt text should inherit description';
 
 		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
 		$request->add_header( 'content-type', 'application/json' );
@@ -188,7 +188,7 @@ class Test_REST_API extends \WP_UnitTestCase {
 						'type'          => 'post',
 						'subtype'       => 'attachment',
 						'sst_source_id' => $url,
-						'args'          => compact( 'url', 'description' ),
+						'args'          => compact( 'url', 'title' ),
 					],
 				],
 			]
@@ -201,16 +201,16 @@ class Test_REST_API extends \WP_UnitTestCase {
 		$data = $response->get_data();
 		$this->assertFalse( empty( $data['posts'][1]['post_id'] ) );
 		$this->assertSame(
-			$description,
+			$title,
 			get_post_meta( $data['posts'][1]['post_id'], '_wp_attachment_image_alt', true )
 		);
 	}
 
 	public function test_attachment_alt_text_explicit() {
 		wp_set_current_user( self::$admin_id );
-		$url         = 'https://wpthemetestdata.files.wordpress.com/2008/06/canola2.jpg';
-		$description = 'Image description';
-		$alt_text    = 'Alt text';
+		$url      = 'https://wpthemetestdata.files.wordpress.com/2008/06/canola2.jpg';
+		$title    = 'Image description';
+		$alt_text = 'Alt text';
 
 		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
 		$request->add_header( 'content-type', 'application/json' );
@@ -222,9 +222,9 @@ class Test_REST_API extends \WP_UnitTestCase {
 						'subtype'       => 'attachment',
 						'sst_source_id' => $url,
 						'args'          => [
-							'url'         => $url,
-							'description' => $description,
-							'meta'        => [
+							'url'   => $url,
+							'title' => $title,
+							'meta'  => [
 								'_wp_attachment_image_alt' => $alt_text,
 							],
 						],
@@ -365,5 +365,35 @@ class Test_REST_API extends \WP_UnitTestCase {
 		$this->assertEquals( 400, $response->get_status() );
 		$data = $response->get_data();
 		$this->assertSame( 'rest_invalid_param', $data['code'] );
+	}
+
+	public function test_post_with_ref_posts() {
+		wp_set_current_user( self::$admin_id );
+		$source_id = 'page-123';
+
+		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
+		$request->add_header( 'content-type', 'application/json' );
+		$params = $this->set_post_data(
+			[
+				'references' => [
+					[
+						'type'          => 'post',
+						'subtype'       => 'page',
+						'sst_source_id' => $source_id,
+					],
+				],
+			]
+		);
+		$request->set_body( wp_json_encode( $params ) );
+		$response = rest_get_server()->dispatch( $request );
+
+		$this->check_create_post_response( $response, $params );
+
+		$data = $response->get_data();
+		$this->assertFalse( empty( $data['posts'][1]['sst_source_id'] ) );
+		$this->assertFalse( empty( $data['posts'][1]['post_id'] ) );
+		$this->assertSame( $source_id, $data['posts'][1]['sst_source_id'] );
+		$this->assertSame( $source_id, get_the_title( $data['posts'][1]['post_id'] ) );
+		$this->assertSame( 'page', get_post_type( $data['posts'][1]['post_id'] ) );
 	}
 }
