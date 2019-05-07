@@ -863,11 +863,11 @@ class REST_API extends \WP_REST_Controller {
 								'type'        => 'object',
 								'properties'  => [
 									'url'   => [
-										'description' => __( 'The URL for an attachment, if this reference is an attachment.', 'sst' ),
+										'description' => __( 'The URL for an attachment, if this reference is an attachment. This is required for attachments.', 'sst' ),
 										'type'        => 'string',
 									],
 									'title' => [
-										'description' => __( 'The post or term title, if this is a post or term, or image description (which alt text inherits unless set explicitly) if this is an attachment.', 'sst' ),
+										'description' => __( 'The post or term title, if this is a post or term, or image description (which alt text inherits unless set explicitly) if this is an attachment. This is required for terms.', 'sst' ),
 										'type'        => 'string',
 									],
 									'meta'  => [
