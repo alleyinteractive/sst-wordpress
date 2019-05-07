@@ -201,15 +201,62 @@ class REST_API extends \WP_REST_Controller {
 	}
 
 	/**
-	 * Download images to a given post ID for a given REST request.
+	 * Download image to a given post ID for a given reference.
 	 *
-	 * @param int              $post_id Post ID to which to attach the images.
-	 * @param \WP_REST_Request $request REST API request containing the image
-	 *                                  data to download and save.
+	 * @param int   $post_id   Post ID to which to attach the images.
+	 * @param array $reference References array entry.
+	 * @return \WP_Error|\WP_Post Post object on success, WP_Error on failure.
+	 */
+	protected function download_image( int $post_id, array $reference ) {
+		if ( empty( $reference['args']['url'] ) ) {
+			return new \WP_Error(
+				'attachment-missing-url',
+				__( 'Reference attachment missing args.url', 'sst' )
+			);
+		}
+
+		$source = $reference['args'];
+
+		// Move the source id to meta.
+		$source['meta']['sst_source_id'] = $reference['sst_source_id'];
+
+		// Download the image to WordPress.
+		$image_id = $this->media_sideload_image(
+			$source['url'],
+			$post_id,
+			$source['description'] ?? '',
+			'id'
+		);
+
+		if ( is_wp_error( $image_id ) ) {
+			return $image_id;
+		}
+		$image_id = intval( $image_id );
+
+		// Save meta for the image.
+		if (
+			empty( $source['meta']['_wp_attachment_image_alt'] )
+			&& ! empty( $source['description'] )
+		) {
+			// If the alt text is missing, set it to the description.
+			$source['meta']['_wp_attachment_image_alt'] = $source['description'];
+		}
+		$this->save_post_meta( $image_id, $source );
+
+		return get_post( $image_id );
+	}
+
+	/**
+	 * Create references from a given post ID for a given REST request.
+	 *
+	 * @param int              $post_id Post ID to which to attach the
+	 *                                  references.
+	 * @param \WP_REST_Request $request REST API request containing the
+	 *                                  references to create.
 	 * @return array Array of source urls and resulting ids, or source urls and
 	 *               resulting errors.
 	 */
-	protected function download_images( int $post_id, \WP_REST_Request $request ): array {
+	protected function create_refs( int $post_id, \WP_REST_Request $request ): array {
 		$return = [];
 
 		if ( empty( $request['references'] ) ) {
@@ -217,52 +264,13 @@ class REST_API extends \WP_REST_Controller {
 		}
 
 		foreach ( $request['references'] as $reference ) {
-			// Skip this reference if it is not an attachment.
+			// Handle attachments separately.
 			if (
-				'post' !== $reference['type']
-				|| 'attachment' !== $reference['subtype']
-				|| empty( $reference['args']['url'] )
+				'post' === $reference['type']
+				&& 'attachment' === $reference['subtype']
 			) {
-				continue;
+				$return[] = $this->download_image( $post_id, $reference );
 			}
-
-			$source = $reference['args'];
-
-			// Move the source id to meta.
-			$source['meta']['sst_source_id'] = $reference['sst_source_id'];
-
-			// Download the image to WordPress.
-			$image_id = $this->media_sideload_image(
-				$source['url'],
-				$post_id,
-				$source['description'] ?? '',
-				'id'
-			);
-
-			if ( is_wp_error( $image_id ) ) {
-				$return[] = [
-					'source_url' => $source['url'],
-					'error'      => $image_id->get_error_message(),
-				];
-				continue;
-			}
-			$image_id = intval( $image_id );
-
-			// Save meta for the image.
-			if (
-				empty( $source['meta']['_wp_attachment_image_alt'] )
-				&& ! empty( $source['description'] )
-			) {
-				// If the alt text is missing, set it to the description.
-				$source['meta']['_wp_attachment_image_alt'] = $source['description'];
-			}
-			$this->save_post_meta( $image_id, $source );
-
-			$return[] = [
-				'sst_source_id' => $source['meta']['sst_source_id'],
-				'source_url'    => $source['url'],
-				'id'            => $image_id,
-			];
 		}
 
 		return $return;
@@ -367,16 +375,16 @@ class REST_API extends \WP_REST_Controller {
 			$post
 		);
 
-		// Download images and add to the response.
-		$attachments = $this->download_images( $post->ID, $request );
-		foreach ( $attachments as $attachment ) {
-			if ( ! empty( $attachment['id'] ) ) {
+		// Create reference objects.
+		$created_refs = $this->create_refs( $post->ID, $request );
+		foreach ( $created_refs as $created_ref ) {
+			if ( is_wp_error( $created_ref ) ) {
+				$created_objects['errors'][] = $created_ref->get_error_message();
+			} else {
 				$created_objects = $this->add_object_to_response(
 					$created_objects,
-					get_post( $attachment['id'] )
+					$created_ref
 				);
-			} elseif ( ! empty( $attachment['error'] ) ) {
-				$created_objects['errors'][] = $attachment;
 			}
 		}
 
