@@ -156,11 +156,27 @@ class REST_API extends \WP_REST_Controller {
 	 * @return bool True if meta is added, false if not.
 	 */
 	protected function save_post_meta( int $post_id, $request ): bool {
-		if ( empty( $request['meta'] ) ) {
+		/**
+		 * Filter the post meta to be saved prior to saving it.
+		 *
+		 * @param int                    $meta    Array of post meta, as
+		 *                                        `key => value(s)` pairs.
+		 * @param int                    $post_id Post ID.
+		 * @param \WP_REST_Request|array $request REST request or array
+		 *                                        containing post meta.
+		 */
+		$meta = apply_filters(
+			'sst_pre_save_post_meta',
+			$request['meta'] ?? [],
+			$post_id,
+			$request
+		);
+
+		if ( empty( $meta ) ) {
 			return false;
 		}
 
-		foreach ( $request['meta'] as $key => $values ) {
+		foreach ( $meta as $key => $values ) {
 			// Discern between single values and multiple.
 			if ( is_array( $values ) ) {
 				delete_post_meta( $post_id, $key );
@@ -184,11 +200,27 @@ class REST_API extends \WP_REST_Controller {
 	 * @return bool True if meta is added, false if not.
 	 */
 	protected function save_term_meta( int $term_id, $request ): bool {
-		if ( empty( $request['meta'] ) ) {
+		/**
+		 * Filter the term meta to be saved prior to saving it.
+		 *
+		 * @param int                    $meta    Array of term meta, as
+		 *                                        `key => value(s)` pairs.
+		 * @param int                    $term_id Term ID.
+		 * @param \WP_REST_Request|array $request REST request or array
+		 *                                        containing term meta.
+		 */
+		$meta = apply_filters(
+			'sst_pre_save_term_meta',
+			$request['meta'] ?? [],
+			$term_id,
+			$request
+		);
+
+		if ( empty( $meta ) ) {
 			return false;
 		}
 
-		foreach ( $request['meta'] as $key => $values ) {
+		foreach ( $meta as $key => $values ) {
 			// Discern between single values and multiple.
 			if ( is_array( $values ) ) {
 				delete_term_meta( $term_id, $key );
@@ -616,6 +648,7 @@ class REST_API extends \WP_REST_Controller {
 	 */
 	protected function prepare_item_for_database( $request ) {
 		$post_data = (array) $request->get_json_params();
+		$post_type = $post_data['type'];
 
 		// First, check required fields.
 		if ( empty( $request['meta']['sst_source_id'] ) ) {
@@ -650,7 +683,19 @@ class REST_API extends \WP_REST_Controller {
 			$post_data['meta']
 		);
 
-		return (object) $post_data;
+		/**
+		 * Filter a "prepared" post before it gets sent to the core endpoint.
+		 *
+		 * @param stdClass         $post_data An object representing a single
+		 *                                    post prepared for inserting or
+		 *                                    updating the database.
+		 * @param \WP_REST_Request $request   Request object.
+		 */
+		return apply_filters(
+			"sst_prepare_post_{$post_type}",
+			(object) $post_data,
+			$request
+		);
 	}
 
 	/**
