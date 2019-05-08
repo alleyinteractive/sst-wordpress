@@ -430,6 +430,22 @@ class REST_API extends \WP_REST_Controller {
 				$request
 			);
 
+			// If `save_to_meta` is set, store the resulting ID in that key.
+			if ( ! empty( $reference['save_to_meta'] ) ) {
+				$object_id = false;
+				if ( $result instanceof \WP_Post ) {
+					$object_id = $result->ID;
+				} elseif ( $result instanceof \WP_Term ) {
+					$object_id = $result->term_id;
+				}
+				add_post_meta(
+					$post_id,
+					$reference['save_to_meta'],
+					$object_id,
+					true
+				);
+			}
+
 			// Only include posts, terms, and errors in the return array.
 			if (
 				is_wp_error( $result )
@@ -856,6 +872,10 @@ class REST_API extends \WP_REST_Controller {
 							],
 							'sst_source_id' => [
 								'description' => __( 'The original source ID. Required if the type is "post" and the subtype is not "attachment", optional otherwise.', 'sst' ),
+								'type'        => 'string',
+							],
+							'save_to_meta'  => [
+								'description' => __( 'If set, the ID of the created ref will be stored in the given meta key after it is resolved.', 'sst' ),
 								'type'        => 'string',
 							],
 							'args'          => [

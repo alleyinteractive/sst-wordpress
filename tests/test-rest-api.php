@@ -503,4 +503,40 @@ class Test_REST_API extends \WP_UnitTestCase {
 			get_term_meta( $term_id, 'test-key', true )
 		);
 	}
+
+	public function test_post_with_featured_image() {
+		wp_set_current_user( self::$admin_id );
+		$url = 'https://wpthemetestdata.files.wordpress.com/2008/06/canola2.jpg';
+
+		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
+		$request->add_header( 'content-type', 'application/json' );
+		$params = $this->set_post_data(
+			[
+				'references' => [
+					[
+						'type'         => 'post',
+						'subtype'      => 'attachment',
+						'args'         => compact( 'url' ),
+						'save_to_meta' => '_thumbnail_id',
+					],
+				],
+			]
+		);
+		$request->set_body( wp_json_encode( $params ) );
+		$response = rest_get_server()->dispatch( $request );
+
+		$this->check_create_post_response( $response, $params );
+
+		$data = $response->get_data();
+		$this->assertFalse( empty( $data['posts'][0]['post_id'] ) );
+		$this->assertFalse( empty( $data['posts'][1]['post_id'] ) );
+		$post_id  = $data['posts'][0]['post_id'];
+		$image_id = $data['posts'][1]['post_id'];
+
+		// Confirm that the image was stored as the post thumbnail.
+		$this->assertSame(
+			$image_id,
+			(int) get_post_thumbnail_id( $post_id )
+		);
+	}
 }
