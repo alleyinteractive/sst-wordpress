@@ -40,6 +40,23 @@ class Test_REST_API extends \WP_UnitTestCase {
 		do_action( 'rest_api_init' );
 	}
 
+	protected function create_post_request( $params ) {
+		wp_set_current_user( self::$admin_id );
+
+		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
+		$request->add_header( 'content-type', 'application/json' );
+		$request->set_body( wp_json_encode( $params ) );
+
+		return rest_get_server()->dispatch( $request );
+	}
+
+	protected function create_post_request_with_defaults( $overrides = [] ) {
+		$params = $this->set_post_data( $overrides );
+		$response = $this->create_post_request( $params );
+		$this->check_create_post_response( $response, $params );
+		return $response->get_data();
+	}
+
 	protected function set_post_data( $args = [] ) {
 		$defaults = [
 			'title'   => 'Post Title',
@@ -91,11 +108,6 @@ class Test_REST_API extends \WP_UnitTestCase {
 	}
 
 	public function test_create_basic_promise_post() {
-		wp_set_current_user( self::$admin_id );
-
-		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
-		$request->add_header( 'content-type', 'application/json' );
-
 		// Set the absolute minimum amount of data required to create a post.
 		$params = [
 			'title' => 'Simple Post',
@@ -104,9 +116,7 @@ class Test_REST_API extends \WP_UnitTestCase {
 				'sst_source_id' => 'basic-123',
 			],
 		];
-
-		$request->set_body( wp_json_encode( $params ) );
-		$response = rest_get_server()->dispatch( $request );
+		$response = $this->create_post_request( $params );
 
 		$this->assertNotWPError( $response );
 		$this->assertInstanceOf( '\WP_REST_Response', $response );
@@ -137,24 +147,14 @@ class Test_REST_API extends \WP_UnitTestCase {
 	}
 
 	public function test_create_post() {
-		wp_set_current_user( self::$admin_id );
-
-		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
-		$request->add_header( 'content-type', 'application/json' );
-		$params = $this->set_post_data();
-		$request->set_body( wp_json_encode( $params ) );
-		$response = rest_get_server()->dispatch( $request );
-
-		$this->check_create_post_response( $response, $params );
+		// Create a basic post and check the response.
+		$this->create_post_request_with_defaults();
 	}
 
 	public function test_post_with_attachments() {
-		wp_set_current_user( self::$admin_id );
 		$url = 'https://wpthemetestdata.files.wordpress.com/2008/06/canola2.jpg';
 
-		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
-		$request->add_header( 'content-type', 'application/json' );
-		$params = $this->set_post_data(
+		$data = $this->create_post_request_with_defaults(
 			[
 				'references' => [
 					[
@@ -165,24 +165,16 @@ class Test_REST_API extends \WP_UnitTestCase {
 				],
 			]
 		);
-		$request->set_body( wp_json_encode( $params ) );
-		$response = rest_get_server()->dispatch( $request );
 
-		$this->check_create_post_response( $response, $params );
-
-		$data = $response->get_data();
 		$this->assertFalse( empty( $data['posts'][1]['sst_source_id'] ) );
 		$this->assertSame( $url, $data['posts'][1]['sst_source_id'] );
 	}
 
 	public function test_attachment_alt_text_inherted_from_desc() {
-		wp_set_current_user( self::$admin_id );
 		$url   = 'https://wpthemetestdata.files.wordpress.com/2008/06/canola2.jpg';
 		$title = 'Alt text should inherit description';
 
-		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
-		$request->add_header( 'content-type', 'application/json' );
-		$params = $this->set_post_data(
+		$data = $this->create_post_request_with_defaults(
 			[
 				'references' => [
 					[
@@ -194,12 +186,7 @@ class Test_REST_API extends \WP_UnitTestCase {
 				],
 			]
 		);
-		$request->set_body( wp_json_encode( $params ) );
-		$response = rest_get_server()->dispatch( $request );
 
-		$this->check_create_post_response( $response, $params );
-
-		$data = $response->get_data();
 		$this->assertFalse( empty( $data['posts'][1]['post_id'] ) );
 		$this->assertSame(
 			$title,
@@ -208,14 +195,11 @@ class Test_REST_API extends \WP_UnitTestCase {
 	}
 
 	public function test_attachment_alt_text_explicit() {
-		wp_set_current_user( self::$admin_id );
 		$url      = 'https://wpthemetestdata.files.wordpress.com/2008/06/canola2.jpg';
 		$title    = 'Image description';
 		$alt_text = 'Alt text';
 
-		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
-		$request->add_header( 'content-type', 'application/json' );
-		$params = $this->set_post_data(
+		$data = $this->create_post_request_with_defaults(
 			[
 				'references' => [
 					[
@@ -233,11 +217,6 @@ class Test_REST_API extends \WP_UnitTestCase {
 				],
 			]
 		);
-		$request->set_body( wp_json_encode( $params ) );
-		$response = rest_get_server()->dispatch( $request );
-
-		$data = $response->get_data();
-		$this->check_create_post_response( $response, $params );
 
 		$this->assertFalse( empty( $data['posts'][1]['post_id'] ) );
 		$this->assertSame(
@@ -307,17 +286,17 @@ class Test_REST_API extends \WP_UnitTestCase {
 	 * @param array $reference (Invalid) reference to set in request.
 	 */
 	public function test_invalid_references( $reference ) {
-		wp_set_current_user( self::$admin_id );
-
-		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
-		$request->add_header( 'content-type', 'application/json' );
-		$params = $this->set_post_data(
+		$response = $this->create_post_request(
 			[
+				'title' => 'Simple Post',
+				'type'  => 'post',
+				'meta'  => [
+					'sst_source_id' => 'basic-123',
+				],
 				'references' => [ $reference ],
 			]
 		);
-		$request->set_body( wp_json_encode( $params ) );
-		$response = rest_get_server()->dispatch( $request );
+
 		$this->assertEquals( 400, $response->get_status() );
 		$data = $response->get_data();
 		$this->assertSame( 'rest_invalid_param', $data['code'] );
@@ -365,36 +344,28 @@ class Test_REST_API extends \WP_UnitTestCase {
 	 * @param array $meta (Invalid) meta to set in request.
 	 */
 	public function test_invalid_meta( $meta ) {
-		wp_set_current_user( self::$admin_id );
+		$response = $this->create_post_request(
+			[
+				'title' => 'Simple Post',
+				'type'  => 'sst-promise',
+				'meta'  => array_merge(
+					[
+						'sst_source_id' => 'basic-123',
+					],
+					$meta
+				),
+			]
+		);
 
-		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
-		$request->add_header( 'content-type', 'application/json' );
-
-		$params = [
-			'title' => 'Simple Post',
-			'type'  => 'sst-promise',
-			'meta'  => array_merge(
-				[
-					'sst_source_id' => 'basic-123',
-				],
-				$meta
-			),
-		];
-
-		$request->set_body( wp_json_encode( $params ) );
-		$response = rest_get_server()->dispatch( $request );
 		$this->assertEquals( 400, $response->get_status() );
 		$data = $response->get_data();
 		$this->assertSame( 'rest_invalid_param', $data['code'] );
 	}
 
 	public function test_post_with_ref_posts() {
-		wp_set_current_user( self::$admin_id );
 		$source_id = 'page-123';
 
-		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
-		$request->add_header( 'content-type', 'application/json' );
-		$params = $this->set_post_data(
+		$data = $this->create_post_request_with_defaults(
 			[
 				'references' => [
 					[
@@ -405,12 +376,7 @@ class Test_REST_API extends \WP_UnitTestCase {
 				],
 			]
 		);
-		$request->set_body( wp_json_encode( $params ) );
-		$response = rest_get_server()->dispatch( $request );
 
-		$this->check_create_post_response( $response, $params );
-
-		$data = $response->get_data();
 		$this->assertFalse( empty( $data['posts'][1]['sst_source_id'] ) );
 		$this->assertFalse( empty( $data['posts'][1]['post_id'] ) );
 		$this->assertSame( $source_id, $data['posts'][1]['sst_source_id'] );
@@ -419,12 +385,9 @@ class Test_REST_API extends \WP_UnitTestCase {
 	}
 
 	public function test_post_with_ref_terms() {
-		wp_set_current_user( self::$admin_id );
 		$title = 'term-123';
 
-		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
-		$request->add_header( 'content-type', 'application/json' );
-		$params = $this->set_post_data(
+		$data = $this->create_post_request_with_defaults(
 			[
 				'references' => [
 					[
@@ -437,12 +400,7 @@ class Test_REST_API extends \WP_UnitTestCase {
 				],
 			]
 		);
-		$request->set_body( wp_json_encode( $params ) );
-		$response = rest_get_server()->dispatch( $request );
 
-		$this->check_create_post_response( $response, $params );
-
-		$data = $response->get_data();
 		$this->assertFalse( empty( $data['terms'][0]['term_id'] ) );
 
 		// Assert that the term was created.
@@ -464,11 +422,7 @@ class Test_REST_API extends \WP_UnitTestCase {
 	}
 
 	public function test_post_with_ref_terms_with_term_meta() {
-		wp_set_current_user( self::$admin_id );
-
-		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
-		$request->add_header( 'content-type', 'application/json' );
-		$params = $this->set_post_data(
+		$data = $this->create_post_request_with_defaults(
 			[
 				'references' => [
 					[
@@ -485,12 +439,7 @@ class Test_REST_API extends \WP_UnitTestCase {
 				],
 			]
 		);
-		$request->set_body( wp_json_encode( $params ) );
-		$response = rest_get_server()->dispatch( $request );
 
-		$this->check_create_post_response( $response, $params );
-
-		$data = $response->get_data();
 		$this->assertFalse( empty( $data['terms'][0]['term_id'] ) );
 		$term_id = $data['terms'][0]['term_id'];
 
@@ -505,12 +454,9 @@ class Test_REST_API extends \WP_UnitTestCase {
 	}
 
 	public function test_post_with_featured_image() {
-		wp_set_current_user( self::$admin_id );
 		$url = 'https://wpthemetestdata.files.wordpress.com/2008/06/canola2.jpg';
 
-		$request = new \WP_REST_Request( 'POST', '/sst/v1/post' );
-		$request->add_header( 'content-type', 'application/json' );
-		$params = $this->set_post_data(
+		$data = $this->create_post_request_with_defaults(
 			[
 				'references' => [
 					[
@@ -522,12 +468,7 @@ class Test_REST_API extends \WP_UnitTestCase {
 				],
 			]
 		);
-		$request->set_body( wp_json_encode( $params ) );
-		$response = rest_get_server()->dispatch( $request );
 
-		$this->check_create_post_response( $response, $params );
-
-		$data = $response->get_data();
 		$this->assertFalse( empty( $data['posts'][0]['post_id'] ) );
 		$this->assertFalse( empty( $data['posts'][1]['post_id'] ) );
 		$post_id  = $data['posts'][0]['post_id'];
