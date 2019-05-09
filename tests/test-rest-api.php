@@ -480,4 +480,62 @@ class Test_REST_API extends \WP_UnitTestCase {
 			(int) get_post_thumbnail_id( $post_id )
 		);
 	}
+
+	public function test_set_modified_date() {
+		$modified = '2001-02-03 04:05:06';
+
+		$data = $this->create_post_request_with_defaults( compact( 'modified' ) );
+
+		$this->assertFalse( empty( $data['posts'][0]['post_id'] ) );
+		$post_id = $data['posts'][0]['post_id'];
+
+		// Confirm that the image was stored as the post thumbnail.
+		$this->assertSame(
+			$modified,
+			get_post_modified_time( 'Y-m-d H:i:s', false, $post_id )
+		);
+
+		// Ensure that subsequently updates don't modify the post modified time.
+		$updated_title = 'Updated title';
+		$result        = wp_update_post(
+			[
+				'ID'         => $post_id,
+				'post_title' => $updated_title,
+			]
+		);
+		$this->assertSame( $post_id, $result );
+		$this->assertSame( $updated_title, get_the_title( $post_id ) );
+		$this->assertSame(
+			$modified,
+			get_post_modified_time( 'Y-m-d H:i:s', false, $post_id )
+		);
+	}
+
+	/**
+	 * Verify that, outside of an SST request, the post modified date
+	 * functionality works as usual since we change core behavior during SST
+	 * requests.
+	 */
+	public function test_normal_modified_time_behavior() {
+		$post_date = '2012-03-04 05:06:07';
+		$post_id   = self::factory()->post->create( compact( 'post_date' ) );
+		$this->assertSame(
+			$post_date,
+			get_post_modified_time( 'Y-m-d H:i:s', false, $post_id )
+		);
+
+		$updated_title = 'Updated title';
+		$result        = wp_update_post(
+			[
+				'ID'         => $post_id,
+				'post_title' => $updated_title,
+			]
+		);
+		$this->assertSame( $post_id, $result );
+		$this->assertSame( $updated_title, get_the_title( $post_id ) );
+		$this->assertNotSame(
+			$post_date,
+			get_post_modified_time( 'Y-m-d H:i:s', false, $post_id )
+		);
+	}
 }
