@@ -719,6 +719,12 @@ class REST_API extends \WP_REST_Controller {
 			}
 		}
 
+		// Save additional fields added to the request.
+		$fields_update = $this->update_additional_fields_for_object( $post, $request );
+		if ( is_wp_error( $fields_update ) ) {
+			return $fields_update;
+		}
+
 		// Set the API response.
 		$api_response = rest_ensure_response( $created_objects );
 		$api_response->set_status( 201 );
