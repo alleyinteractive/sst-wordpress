@@ -489,13 +489,13 @@ class Test_REST_API extends \WP_UnitTestCase {
 		$this->assertFalse( empty( $data['posts'][0]['post_id'] ) );
 		$post_id = $data['posts'][0]['post_id'];
 
-		// Confirm that the image was stored as the post thumbnail.
+		// Confirm that the post modified time was set correctly.
 		$this->assertSame(
 			$modified,
 			get_post_modified_time( 'Y-m-d H:i:s', false, $post_id )
 		);
 
-		// Ensure that subsequently updates don't modify the post modified time.
+		// Ensure that subsequent updates don't modify the post modified time.
 		$updated_title = 'Updated title';
 		$result        = wp_update_post(
 			[
