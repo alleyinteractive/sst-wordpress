@@ -61,6 +61,120 @@ class REST_API extends \WP_REST_Controller {
 	}
 
 	/**
+	 * Add filters for modifying core data or functionality, but only during SST
+	 * REST requests.
+	 */
+	public function add_sst_request_filters() {
+		foreach ( get_post_types() as $post_type ) {
+			add_filter( "rest_pre_insert_{$post_type}", [ $this, 'set_modified' ], 10, 2 );
+		}
+		add_filter( 'wp_insert_post_data', [ $this, 'prevent_updates_from_overwriting_modified_date' ], 5, 2 );
+		add_filter( 'wp_insert_post_data', [ $this, 'set_modified_for_real' ], 10, 2 );
+	}
+
+	/**
+	 * Allow modified and modified_gmt properties to be set for SST-created
+	 * post objects.
+	 *
+	 * @param \stdClass        $prepared_post An object representing a single
+	 *                                        post prepared for inserting or
+	 *                                        updating the database.
+	 * @param \WP_REST_Request $request       Request object.
+	 * @return \stdClass
+	 */
+	public function set_modified( \stdClass $prepared_post, \WP_REST_Request $request ): \stdClass {
+		if ( ! empty( $request['modified'] ) ) {
+			$date_data = rest_get_date_with_gmt( $request['modified'] );
+		} elseif ( ! empty( $request['modified_gmt'] ) ) {
+			$date_data = rest_get_date_with_gmt( $request['modified_gmt'], true );
+		}
+
+		if ( ! empty( $date_data ) ) {
+			list( $prepared_post->post_modified, $prepared_post->post_modified_gmt ) = $date_data;
+		}
+
+		return $prepared_post;
+	}
+
+	/**
+	 * Edit the data being saved for a post to ensure that if the post_modified
+	 * and/or post_modified_gmt dates are explicitly set, that they get saved.
+	 * Core doesn't support this out-of-the-box. This accompanies
+	 * {@see REST_API::set_modified()}.
+	 *
+	 * @param array $data    An array of slashed post data.
+	 * @param array $postarr An array of sanitized, but otherwise unmodified
+	 *                       post data.
+	 * @return array
+	 */
+	public function set_modified_for_real( array $data, array $postarr ): array {
+		$modified     = false;
+		$modified_gmt = false;
+
+		// Store the local timestamp if set.
+		if (
+			! empty( $postarr['post_modified'] )
+			&& $this->is_valid_date( $postarr['post_modified'] )
+		) {
+			$modified = $postarr['post_modified'];
+		}
+
+		// Store the GMT timestamp if set.
+		if (
+			! empty( $postarr['post_modified_gmt'] )
+			&& $this->is_valid_date( $postarr['post_modified_gmt'] )
+		) {
+			$modified_gmt = $postarr['post_modified_gmt'];
+		}
+
+		// Ensure that both the local and gmt timestamps get set if either is.
+		if ( $modified && ! $modified_gmt ) {
+			$modified_gmt = get_gmt_from_date( $modified );
+		} elseif ( $modified_gmt && ! $modified ) {
+			$modified = get_date_from_gmt( $modified_gmt );
+		}
+
+		if ( $modified && $modified_gmt ) {
+			$data['post_modified']     = $modified;
+			$data['post_modified_gmt'] = $modified_gmt;
+		}
+
+		return $data;
+	}
+
+	/**
+	 * Ensure that post updates made during SST requests don't alter the
+	 * modified datetimes unless explicitly intended.
+	 *
+	 * @param array $data    An array of slashed post data.
+	 * @param array $postarr An array of sanitized, but otherwise unmodified
+	 *                       post data.
+	 * @return array
+	 */
+	public function prevent_updates_from_overwriting_modified_date( array $data, array $postarr ): array {
+		if (
+			empty( $postarr['post_modified'] )
+			&& empty( $postarr['post_modified_gmt'] )
+		) {
+			unset( $data['post_modified'], $data['post_modified_gmt'] );
+		}
+
+		return $data;
+	}
+
+	/**
+	 * Confirm that a MySQL datetime string is valid.
+	 *
+	 * @param string $date MySQL-formatted datetime string (Y-m-d H:i:s).
+	 * @return bool True if valid, false if not.
+	 */
+	protected function is_valid_date( string $date ): bool {
+		$format = 'Y-m-d H:i:s';
+		$d      = date_create_from_format( $format, $date );
+		return ( $d && $d->format( $format ) === $date );
+	}
+
+	/**
 	 * Register post meta used by SST.
 	 */
 	public function register_meta() {
@@ -531,6 +645,8 @@ class REST_API extends \WP_REST_Controller {
 	 * @return WP_REST_Response|WP_Error Response object on success, or WP_Error object on failure.
 	 */
 	public function create_item( $request ) {
+		$this->add_sst_request_filters();
+
 		$created_objects = [
 			'errors' => [],
 		];
@@ -631,6 +747,8 @@ class REST_API extends \WP_REST_Controller {
 	 * @return WP_REST_Response|WP_Error Response object on success, or WP_Error object on failure.
 	 */
 	public function update_item( $request ) {
+		$this->add_sst_request_filters();
+
 		$data = [];
 
 		$response = rest_ensure_response( $data );
@@ -780,6 +898,16 @@ class REST_API extends \WP_REST_Controller {
 				],
 				'date_gmt'       => [
 					'description' => __( 'The date the object was published, as GMT.', 'sst' ),
+					'type'        => 'string',
+					'format'      => 'date-time',
+				],
+				'modified'       => [
+					'description' => __( "The date the object was last modified, in the site's timezone.", 'sst' ),
+					'type'        => 'string',
+					'format'      => 'date-time',
+				],
+				'modified_gmt'   => [
+					'description' => __( 'The date the object was last modified, as GMT.', 'sst' ),
 					'type'        => 'string',
 					'format'      => 'date-time',
 				],
