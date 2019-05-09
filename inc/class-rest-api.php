@@ -7,10 +7,18 @@
 
 namespace SST;
 
+use stdClass;
+use WP_Error;
+use WP_Post;
+use WP_REST_Controller;
+use WP_REST_Request;
+use WP_REST_Server;
+use WP_Term;
+
 /**
  * REST API class for SST.
  */
-class REST_API extends \WP_REST_Controller {
+class REST_API extends WP_REST_Controller {
 
 	/**
 	 * Constructor.
@@ -31,10 +39,10 @@ class REST_API extends \WP_REST_Controller {
 			'/' . $this->rest_base,
 			[
 				[
-					'methods'             => \WP_REST_Server::CREATABLE,
+					'methods'             => WP_REST_Server::CREATABLE,
 					'callback'            => [ $this, 'create_item' ],
 					'permission_callback' => [ $this, 'create_item_permissions_check' ],
-					'args'                => $this->get_endpoint_args_for_item_schema( \WP_REST_Server::CREATABLE ),
+					'args'                => $this->get_endpoint_args_for_item_schema( WP_REST_Server::CREATABLE ),
 				],
 				'schema' => [ $this, 'get_response_schema' ],
 			]
@@ -50,10 +58,10 @@ class REST_API extends \WP_REST_Controller {
 					],
 				],
 				[
-					'methods'             => \WP_REST_Server::EDITABLE,
+					'methods'             => WP_REST_Server::EDITABLE,
 					'callback'            => [ $this, 'update_item' ],
 					'permission_callback' => [ $this, 'update_item_permissions_check' ],
-					'args'                => $this->get_endpoint_args_for_item_schema( \WP_REST_Server::EDITABLE ),
+					'args'                => $this->get_endpoint_args_for_item_schema( WP_REST_Server::EDITABLE ),
 				],
 				'schema' => [ $this, 'get_response_schema' ],
 			]
@@ -76,13 +84,13 @@ class REST_API extends \WP_REST_Controller {
 	 * Allow modified and modified_gmt properties to be set for SST-created
 	 * post objects.
 	 *
-	 * @param \stdClass        $prepared_post An object representing a single
-	 *                                        post prepared for inserting or
-	 *                                        updating the database.
-	 * @param \WP_REST_Request $request       Request object.
-	 * @return \stdClass
+	 * @param stdClass        $prepared_post An object representing a single
+	 *                                       post prepared for inserting or
+	 *                                       updating the database.
+	 * @param WP_REST_Request $request       Request object.
+	 * @return stdClass
 	 */
-	public function set_modified( \stdClass $prepared_post, \WP_REST_Request $request ): \stdClass {
+	public function set_modified( stdClass $prepared_post, WP_REST_Request $request ): stdClass {
 		if ( ! empty( $request['modified'] ) ) {
 			$date_data = rest_get_date_with_gmt( $request['modified'] );
 		} elseif ( ! empty( $request['modified_gmt'] ) ) {
@@ -199,7 +207,7 @@ class REST_API extends \WP_REST_Controller {
 	 * @return WP_Post|WP_Error Post object if ID is valid, WP_Error otherwise.
 	 */
 	protected function get_post( $id ) {
-		$error = new \WP_Error( 'rest_post_invalid_id', __( 'Invalid post ID.', 'sst' ), [ 'status' => 404 ] );
+		$error = new WP_Error( 'rest_post_invalid_id', __( 'Invalid post ID.', 'sst' ), [ 'status' => 404 ] );
 		if ( (int) $id <= 0 ) {
 			return $error;
 		}
@@ -225,7 +233,7 @@ class REST_API extends \WP_REST_Controller {
 	 * @return WP_REST_Response REST response.
 	 */
 	protected function dispatch_request( $method, $route, $args = [] ) {
-		$request = new \WP_REST_Request( $method, $route );
+		$request = new WP_REST_Request( $method, $route );
 		$request->add_header( 'content-type', 'application/json' );
 
 		if ( ! empty( $args['body'] ) ) {
@@ -238,19 +246,19 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Add a created object to the response.
 	 *
-	 * @param array             $response Response array to which to add an
-	 *                                    object.
-	 * @param \WP_Post|\WP_Term $object   Post or term object.
+	 * @param array           $response Response array to which to add an
+	 *                                  object.
+	 * @param WP_Post|WP_Term $object   Post or term object.
 	 * @return array
 	 */
 	protected function add_object_to_response( array $response, $object ): array {
-		if ( $object instanceof \WP_Post ) {
+		if ( $object instanceof WP_Post ) {
 			$response['posts'][] = [
 				'post_id'       => $object->ID,
 				'post_type'     => $object->post_type,
 				'sst_source_id' => get_post_meta( $object->ID, 'sst_source_id', true ),
 			];
-		} elseif ( $object instanceof \WP_Term ) {
+		} elseif ( $object instanceof WP_Term ) {
 			$response['terms'][] = [
 				'term_id'  => $object->term_id,
 				'taxonomy' => $object->taxonomy,
@@ -264,8 +272,8 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Save an array of post meta to a given post id.
 	 *
-	 * @param int                    $post_id Post ID.
-	 * @param \WP_REST_Request|array $request REST request or array containing
+	 * @param int                   $post_id Post ID.
+	 * @param WP_REST_Request|array $request REST request or array containing
 	 *                                        post meta.
 	 * @return bool True if meta is added, false if not.
 	 */
@@ -273,11 +281,11 @@ class REST_API extends \WP_REST_Controller {
 		/**
 		 * Filter the post meta to be saved prior to saving it.
 		 *
-		 * @param int                    $meta    Array of post meta, as
-		 *                                        `key => value(s)` pairs.
-		 * @param int                    $post_id Post ID.
-		 * @param \WP_REST_Request|array $request REST request or array
-		 *                                        containing post meta.
+		 * @param int                   $meta    Array of post meta, as
+		 *                                       `key => value(s)` pairs.
+		 * @param int                   $post_id Post ID.
+		 * @param WP_REST_Request|array $request REST request or array
+		 *                                       containing post meta.
 		 */
 		$meta = apply_filters(
 			'sst_pre_save_post_meta',
@@ -308,8 +316,8 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Save an array of term meta to a given term id.
 	 *
-	 * @param int                    $term_id Term ID.
-	 * @param \WP_REST_Request|array $request REST request or array containing
+	 * @param int                   $term_id Term ID.
+	 * @param WP_REST_Request|array $request REST request or array containing
 	 *                                        term meta.
 	 * @return bool True if meta is added, false if not.
 	 */
@@ -317,11 +325,11 @@ class REST_API extends \WP_REST_Controller {
 		/**
 		 * Filter the term meta to be saved prior to saving it.
 		 *
-		 * @param int                    $meta    Array of term meta, as
-		 *                                        `key => value(s)` pairs.
-		 * @param int                    $term_id Term ID.
-		 * @param \WP_REST_Request|array $request REST request or array
-		 *                                        containing term meta.
+		 * @param int                   $meta    Array of term meta, as
+		 *                                       `key => value(s)` pairs.
+		 * @param int                   $term_id Term ID.
+		 * @param WP_REST_Request|array $request REST request or array
+		 *                                       containing term meta.
 		 */
 		$meta = apply_filters(
 			'sst_pre_save_term_meta',
@@ -379,7 +387,7 @@ class REST_API extends \WP_REST_Controller {
 	 *
 	 * @param int   $post_id   Post ID to which to attach the images.
 	 * @param array $reference References array entry.
-	 * @return \WP_Error|\WP_Post Post object on success, WP_Error on failure.
+	 * @return WP_Error|WP_Post Post object on success, WP_Error on failure.
 	 */
 	protected function download_image( int $post_id, array $reference ) {
 		$source = $reference['args'];
@@ -417,7 +425,7 @@ class REST_API extends \WP_REST_Controller {
 	 * Create a reference post.
 	 *
 	 * @param array $reference References array entry.
-	 * @return \WP_Error|\WP_Post Post object on success, WP_Error on failure.
+	 * @return WP_Error|WP_Post Post object on success, WP_Error on failure.
 	 */
 	protected function create_ref_post( array $reference ) {
 		$source = $reference['args'];
@@ -447,7 +455,7 @@ class REST_API extends \WP_REST_Controller {
 	 *
 	 * @param array $reference References array entry.
 	 * @param int   $post_id   Post ID to which to attach the term.
-	 * @return \WP_Error|\WP_Term Term object on success, WP_Error on failure.
+	 * @return WP_Error|WP_Term Term object on success, WP_Error on failure.
 	 */
 	protected function create_ref_term( array $reference, int $post_id ) {
 		$source = $reference['args'];
@@ -490,15 +498,15 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Create references from a given post ID for a given REST request.
 	 *
-	 * @param int              $post_id Post ID to which to attach the
-	 *                                  references.
-	 * @param \WP_REST_Request $request REST API request containing the
+	 * @param int             $post_id Post ID to which to attach the
+	 *                                 references.
+	 * @param WP_REST_Request $request REST API request containing the
 	 *                                  references to create.
-	 * @return array Array containing a mix of \WP_Post, \WP_Term, and \WP_Error
+	 * @return array Array containing a mix of WP_Post, WP_Term, and WP_Error
 	 *               objects, depending on the type of reference and if it is
 	 *               successfully created or not.
 	 */
-	protected function create_refs( int $post_id, \WP_REST_Request $request ): array {
+	protected function create_refs( int $post_id, WP_REST_Request $request ): array {
 		$return = [];
 
 		if ( empty( $request['references'] ) ) {
@@ -509,16 +517,16 @@ class REST_API extends \WP_REST_Controller {
 			/**
 			 * Allow external code to short-circuit ref creation.
 			 *
-			 * @param mixed            $result    If this is anything other than
+			 * @param mixed           $result     If this is anything other than
 			 *                                    null, the reference will be
 			 *                                    skipped. If the returned value
 			 *                                    is an object, it will be
 			 *                                    included in the API response
 			 *                                    as a created object.
-			 * @param array            $reference References array entry.
-			 * @param int              $post_id   Post ID containing the
+			 * @param array           $reference  References array entry.
+			 * @param int             $post_id    Post ID containing the
 			 *                                    reference.
-			 * @param \WP_REST_Request $request   REST API request containing
+			 * @param WP_REST_Request $request    REST API request containing
 			 *                                    the references to create.
 			 */
 			$result = apply_filters(
@@ -531,8 +539,8 @@ class REST_API extends \WP_REST_Controller {
 			if ( null !== $result ) {
 				if (
 					is_wp_error( $result )
-					|| $result instanceof \WP_Post
-					|| $result instanceof \WP_Term
+					|| $result instanceof WP_Post
+					|| $result instanceof WP_Term
 				) {
 					$return[] = $result;
 				}
@@ -550,7 +558,7 @@ class REST_API extends \WP_REST_Controller {
 			} elseif ( 'term' === $reference['type'] ) {
 				$result = $this->create_ref_term( $reference, $post_id );
 			} else {
-				$result = new \WP_Error(
+				$result = new WP_Error(
 					'invalid-ref',
 					__( 'Invalid ref', 'sst' )
 				);
@@ -560,12 +568,12 @@ class REST_API extends \WP_REST_Controller {
 			 * Filter created ref post, term, or resulting error.
 			 *
 			 * @param object           $result    The created ref object
-			 *                                    (\WP_Post or \WP_Term) or the
-			 *                                    resulting \WP_Error object.
+			 *                                    (WP_Post or WP_Term) or the
+			 *                                    resulting WP_Error object.
 			 * @param array            $reference References array entry.
 			 * @param int              $post_id   Post ID containing the
 			 *                                    reference.
-			 * @param \WP_REST_Request $request   REST API request containing
+			 * @param WP_REST_Request $request   REST API request containing
 			 *                                    the references to create.
 			 */
 			$result = apply_filters(
@@ -579,9 +587,9 @@ class REST_API extends \WP_REST_Controller {
 			// If `save_to_meta` is set, store the resulting ID in that key.
 			if ( ! empty( $reference['save_to_meta'] ) ) {
 				$object_id = false;
-				if ( $result instanceof \WP_Post ) {
+				if ( $result instanceof WP_Post ) {
 					$object_id = $result->ID;
-				} elseif ( $result instanceof \WP_Term ) {
+				} elseif ( $result instanceof WP_Term ) {
 					$object_id = $result->term_id;
 				}
 				add_post_meta(
@@ -595,8 +603,8 @@ class REST_API extends \WP_REST_Controller {
 			// Only include posts, terms, and errors in the return array.
 			if (
 				is_wp_error( $result )
-				|| $result instanceof \WP_Post
-				|| $result instanceof \WP_Term
+				|| $result instanceof WP_Post
+				|| $result instanceof WP_Term
 			) {
 				$return[] = $result;
 			}
@@ -610,7 +618,7 @@ class REST_API extends \WP_REST_Controller {
 	 */
 	protected function authenticate_sst_permissions_check() {
 		if ( ! current_user_can( 'authenticate_sst' ) ) {
-			return new \WP_Error(
+			return new WP_Error(
 				'rest_cannot_create',
 				__( 'Sorry, you are not allowed to authenticate.', 'sst' ),
 				[ 'status' => rest_authorization_required_code() ]
@@ -623,12 +631,13 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Checks if a given request has access to create a post.
 	 *
-	 * @param \WP_REST_Request $request Full details about the request.
-	 * @return true|WP_Error True if the request has access to create items, WP_Error object otherwise.
+	 * @param WP_REST_Request $request Full details about the request.
+	 * @return true|WP_Error True if the request has access to create items,
+	 *                       WP_Error object otherwise.
 	 */
 	public function create_item_permissions_check( $request ) {
 		if ( ! empty( $request['id'] ) ) {
-			return new \WP_Error(
+			return new WP_Error(
 				'rest_post_exists',
 				__( 'Cannot create existing post.', 'sst' ),
 				[ 'status' => 400 ]
@@ -641,8 +650,9 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Creates a single post.
 	 *
-	 * @param \WP_REST_Request $request Full details about the request.
-	 * @return WP_REST_Response|WP_Error Response object on success, or WP_Error object on failure.
+	 * @param WP_REST_Request $request Full details about the request.
+	 * @return WP_REST_Response|WP_Error Response object on success, or WP_Error
+	 *                                   object on failure.
 	 */
 	public function create_item( $request ) {
 		$this->add_sst_request_filters();
@@ -671,7 +681,7 @@ class REST_API extends \WP_REST_Controller {
 		} elseif ( $response->get_status() >= 400 ) {
 			return $response;
 		} elseif ( 201 !== $response->get_status() ) {
-			return new \WP_Error(
+			return new WP_Error(
 				'unexpected-response',
 				sprintf(
 					/* translators: %d: response code from creating post */
@@ -685,7 +695,7 @@ class REST_API extends \WP_REST_Controller {
 		// Add the created object to this endpoint's response.
 		$data = $response->get_data();
 		if ( empty( $data['id'] ) ) {
-			return new \WP_Error(
+			return new WP_Error(
 				'missing-post-id',
 				sprintf(
 					__( 'Missing the ID of the created post.', 'sst' ),
@@ -734,8 +744,9 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Checks if a given request has access to update a post.
 	 *
-	 * @param \WP_REST_Request $request Full details about the request.
-	 * @return true|WP_Error True if the request has access to update the item, WP_Error object otherwise.
+	 * @param WP_REST_Request $request Full details about the request.
+	 * @return true|WP_Error True if the request has access to update the item,
+	 *                       WP_Error object otherwise.
 	 */
 	public function update_item_permissions_check( $request ) {
 		$prepared_post = $this->get_post( $request['id'] );
@@ -749,8 +760,9 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Updates a single post.
 	 *
-	 * @param \WP_REST_Request $request Full details about the request.
-	 * @return WP_REST_Response|WP_Error Response object on success, or WP_Error object on failure.
+	 * @param WP_REST_Request $request Full details about the request.
+	 * @return WP_REST_Response|WP_Error Response object on success, or WP_Error
+	 *                                   object on failure.
 	 */
 	public function update_item( $request ) {
 		$this->add_sst_request_filters();
@@ -767,7 +779,7 @@ class REST_API extends \WP_REST_Controller {
 	 *
 	 * @since 4.7.0
 	 *
-	 * @param \WP_REST_Request $request Request object.
+	 * @param WP_REST_Request $request Request object.
 	 * @return stdClass|WP_Error Post object or WP_Error.
 	 */
 	protected function prepare_item_for_database( $request ) {
@@ -776,21 +788,21 @@ class REST_API extends \WP_REST_Controller {
 
 		// First, check required fields.
 		if ( empty( $request['meta']['sst_source_id'] ) ) {
-			return new \WP_Error(
+			return new WP_Error(
 				'empty-source_id',
 				__( 'Post is missing source ID (`meta.sst_source_id`)', 'sst' ),
 				[ 'status' => 400 ]
 			);
 		}
 		if ( empty( $request['title'] ) ) {
-			return new \WP_Error(
+			return new WP_Error(
 				'empty-title',
 				__( 'Post is missing title (`title`)', 'sst' ),
 				[ 'status' => 400 ]
 			);
 		}
 		if ( empty( $request['type'] ) ) {
-			return new \WP_Error(
+			return new WP_Error(
 				'empty-type',
 				__( 'Post is missing post type (`type`)', 'sst' ),
 				[ 'status' => 400 ]
@@ -810,10 +822,10 @@ class REST_API extends \WP_REST_Controller {
 		/**
 		 * Filter a "prepared" post before it gets sent to the core endpoint.
 		 *
-		 * @param stdClass         $post_data An object representing a single
-		 *                                    post prepared for inserting or
-		 *                                    updating the database.
-		 * @param \WP_REST_Request $request   Request object.
+		 * @param stdClass        $post_data An object representing a single
+		 *                                   post prepared for inserting or
+		 *                                   updating the database.
+		 * @param WP_REST_Request $request   Request object.
 		 */
 		return apply_filters(
 			"sst_prepare_post_{$post_type}",
@@ -1118,14 +1130,14 @@ class REST_API extends \WP_REST_Controller {
 
 		foreach ( $values as $meta_key => $meta_value ) {
 			if ( ! is_string( $meta_key ) ) {
-				return new \WP_Error(
+				return new WP_Error(
 					'sst-invalid-meta-key',
 					/* translators: 1: meta key */
 					sprintf( __( 'Invalid meta key %1$s. Meta keys must be strings.', 'sst' ), $meta_key )
 				);
 			}
 			if ( ! is_scalar( $meta_value ) && ! wp_is_numeric_array( $meta_value ) ) {
-				return new \WP_Error(
+				return new WP_Error(
 					'sst-invalid-meta-value',
 					/* translators: 1: meta key */
 					sprintf( __( 'Invalid meta value for key %1$s. Meta values must either be numeric arrays or scalar values.', 'sst' ), $meta_key )
@@ -1134,7 +1146,7 @@ class REST_API extends \WP_REST_Controller {
 			if ( is_array( $meta_value ) ) {
 				foreach ( $meta_value as $individual_value ) {
 					if ( ! is_scalar( $individual_value ) ) {
-						return new \WP_Error(
+						return new WP_Error(
 							'sst-invalid-meta-value',
 							/* translators: 1: meta key */
 							sprintf( __( 'Invalid meta value for key %1$s. Meta values within arrays must be scalar values.', 'sst' ), $meta_key )
@@ -1150,9 +1162,9 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Sanitize the meta array for a post.
 	 *
-	 * @param array            $values  The meta array.
-	 * @param \WP_REST_Request $request The request object.
-	 * @param string           $param   The parameter name.
+	 * @param array           $values  The meta array.
+	 * @param WP_REST_Request $request The request object.
+	 * @param string          $param   The parameter name.
 	 * @return array
 	 */
 	public function sanitize_meta( $values, $request, $param ) {
@@ -1176,9 +1188,9 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Check that the references in a request is in the proper format.
 	 *
-	 * @param mixed            $values  The meta value submitted in the request.
-	 * @param \WP_REST_Request $request The request object.
-	 * @param string           $param   The parameter name.
+	 * @param mixed           $values  The meta value submitted in the request.
+	 * @param WP_REST_Request $request The request object.
+	 * @param string          $param   The parameter name.
 	 * @return WP_Error|string The meta array, if valid, otherwise an error.
 	 */
 	public function validate_references( $values, $request, $param ) {
@@ -1193,7 +1205,7 @@ class REST_API extends \WP_REST_Controller {
 				empty( $ref['type'] )
 				|| empty( $ref['subtype'] )
 			) {
-				return new \WP_Error(
+				return new WP_Error(
 					'sst-invalid-reference',
 					__( 'Invalid reference; type, subtype, and sst_source_id are required properties.', 'sst' )
 				);
@@ -1205,7 +1217,7 @@ class REST_API extends \WP_REST_Controller {
 				&& 'attachment' !== $ref['subtype']
 				&& empty( $ref['sst_source_id'] )
 			) {
-				return new \WP_Error(
+				return new WP_Error(
 					'sst-invalid-reference',
 					__( 'Invalid reference; sst_source_id is a required property for non-attachment posts.', 'sst' )
 				);
@@ -1217,7 +1229,7 @@ class REST_API extends \WP_REST_Controller {
 				&& 'attachment' === $ref['subtype']
 				&& empty( $ref['args']['url'] )
 			) {
-				return new \WP_Error(
+				return new WP_Error(
 					'attachment-missing-url',
 					__( 'Reference attachment missing args.url', 'sst' )
 				);
@@ -1228,7 +1240,7 @@ class REST_API extends \WP_REST_Controller {
 				'term' === $ref['type']
 				&& empty( $ref['args']['title'] )
 			) {
-				return new \WP_Error(
+				return new WP_Error(
 					'term-missing-title',
 					__( 'Reference term missing args.title', 'sst' )
 				);
@@ -1241,9 +1253,9 @@ class REST_API extends \WP_REST_Controller {
 	/**
 	 * Sanitize the references array for a post.
 	 *
-	 * @param array            $values  The references array.
-	 * @param \WP_REST_Request $request The request object.
-	 * @param string           $param   The parameter name.
+	 * @param array           $values  The references array.
+	 * @param WP_REST_Request $request The request object.
+	 * @param string          $param   The parameter name.
 	 * @return array
 	 */
 	public function sanitize_references( $values, $request, $param ) {
