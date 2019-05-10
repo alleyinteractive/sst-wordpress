@@ -335,10 +335,18 @@ class REST_API extends WP_REST_Controller {
 			if ( is_array( $values ) ) {
 				delete_post_meta( $post_id, $key );
 				foreach ( $values as $value ) {
-					add_post_meta( $post_id, $key, $value );
+					add_post_meta(
+						$post_id,
+						$key,
+						$this->replace_refs_in_meta_value( $value )
+					);
 				}
 			} else {
-				update_post_meta( $post_id, $key, $values );
+				update_post_meta(
+					$post_id,
+					$key,
+					$this->replace_refs_in_meta_value( $values )
+				);
 			}
 		}
 
@@ -379,10 +387,18 @@ class REST_API extends WP_REST_Controller {
 			if ( is_array( $values ) ) {
 				delete_term_meta( $term_id, $key );
 				foreach ( $values as $value ) {
-					add_term_meta( $term_id, $key, $value );
+					add_term_meta(
+						$term_id,
+						$key,
+						$this->replace_refs_in_meta_value( $value )
+					);
 				}
 			} else {
-				update_term_meta( $term_id, $key, $values );
+				update_term_meta(
+					$term_id,
+					$key,
+					$this->replace_refs_in_meta_value( $values )
+				);
 			}
 		}
 
@@ -1384,6 +1400,23 @@ class REST_API extends WP_REST_Controller {
 				]
 			);
 		}
+	}
+
+	/**
+	 * Replace refs in a meta value.
+	 *
+	 * @param string $value Meta value.
+	 * @return string
+	 */
+	protected function replace_refs_in_meta_value( string $value ): string {
+		// Check the post content to see if any refs need replacement.
+		$updated_value = $this->replace_refs_in_string( $value );
+
+		if ( ! empty( $updated_value ) && $updated_value !== $value ) {
+			return $updated_value;
+		}
+
+		return $value;
 	}
 
 	/**

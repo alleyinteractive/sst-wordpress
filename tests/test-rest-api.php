@@ -76,7 +76,7 @@ class Test_REST_API extends \WP_UnitTestCase {
 			],
 		];
 
-		return wp_parse_args( $args, $defaults );
+		return array_replace_recursive( $defaults, $args );
 	}
 
 	protected function check_create_post_response( $response, $params ) {
@@ -584,6 +584,37 @@ EOT;
 		$this->assertSame(
 			sprintf( $replaced_content, $image_id, $new_url ),
 			$post->post_content
+		);
+	}
+
+	public function test_replace_ref_in_meta() {
+		$sst_source_id = 'post-886644';
+
+		$data = $this->create_post_request_with_defaults(
+			[
+				'meta'       => [
+					'ref_key'       => "{{ {$sst_source_id} | to: id }}",
+				],
+				'references' => [
+					[
+						'type'          => 'post',
+						'subtype'       => 'sst-promise',
+						'sst_source_id' => $sst_source_id,
+					],
+				],
+			]
+		);
+
+		$this->assertFalse( empty( $data['posts'][0]['post_id'] ) );
+		$this->assertFalse( empty( $data['posts'][1]['post_id'] ) );
+
+		$post_id = $data['posts'][0]['post_id'];
+		$ref_id  = $data['posts'][1]['post_id'];
+
+		// Confirm that the image was stored as the post thumbnail.
+		$this->assertSame(
+			strval( $ref_id ),
+			get_post_meta( $post_id, 'ref_key', true )
 		);
 	}
 }
