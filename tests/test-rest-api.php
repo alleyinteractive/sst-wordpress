@@ -538,4 +538,52 @@ class Test_REST_API extends \WP_UnitTestCase {
 			get_post_modified_time( 'Y-m-d H:i:s', false, $post_id )
 		);
 	}
+
+	public function test_replace_image_ref_in_content() {
+		$sst_source_id = 'image-33445';
+		$url           = 'https://wpthemetestdata.files.wordpress.com/2008/06/canola2.jpg';
+
+		$content = <<<EOT
+
+<!-- wp:image {"id":{{ {$sst_source_id} | to: id }}} -->
+<figure class="wp-block-image"><img src="{{ {$sst_source_id} | to: url }}" alt="" class="wp-image-{{ {$sst_source_id} | to: id }}"/></figure>
+<!-- /wp:image -->
+
+EOT;
+
+		$replaced_content = <<<EOT
+
+<!-- wp:image {"id":%1\$d} -->
+<figure class="wp-block-image"><img src="%2\$s" alt="" class="wp-image-%1\$d"/></figure>
+<!-- /wp:image -->
+
+EOT;
+
+		$data = $this->create_post_request_with_defaults(
+			[
+				'content'    => $content,
+				'references' => [
+					[
+						'type'          => 'post',
+						'subtype'       => 'attachment',
+						'sst_source_id' => $sst_source_id,
+						'args'    => compact( 'url' ),
+					],
+				],
+			]
+		);
+
+		$this->assertFalse( empty( $data['posts'][0]['post_id'] ) );
+		$this->assertFalse( empty( $data['posts'][1]['post_id'] ) );
+
+		$post     = get_post( $data['posts'][0]['post_id'] );
+		$image_id = $data['posts'][1]['post_id'];
+		$new_url  = wp_get_attachment_image_url( $image_id, 'full' );
+
+		// Confirm that the image was stored as the post thumbnail.
+		$this->assertSame(
+			sprintf( $replaced_content, $image_id, $new_url ),
+			$post->post_content
+		);
+	}
 }

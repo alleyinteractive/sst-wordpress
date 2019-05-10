@@ -707,6 +707,12 @@ class REST_API extends WP_REST_Controller {
 
 		$post = get_post( $data['id'] );
 
+		// Create reference objects.
+		$created_refs = $this->create_refs( $post->ID, $request );
+
+		// Replace any refs that might appear in content.
+		$this->replace_refs_in_post_content( $post, $created_refs );
+
 		// Save the post meta.
 		$this->save_post_meta( $post->ID, $request );
 
@@ -716,8 +722,7 @@ class REST_API extends WP_REST_Controller {
 			$post
 		);
 
-		// Create reference objects.
-		$created_refs = $this->create_refs( $post->ID, $request );
+		// Add the created refs to the response.
 		foreach ( $created_refs as $created_ref ) {
 			if ( is_wp_error( $created_ref ) ) {
 				$created_objects['errors'][] = $created_ref->get_error_message();
@@ -1279,5 +1284,75 @@ class REST_API extends WP_REST_Controller {
 		}
 
 		return $values;
+	}
+
+	/**
+	 * Replace refs in post content.
+	 *
+	 * @param WP_Post $post         Post object.
+	 * @param array   $created_refs Refs created by the request.
+	 */
+	protected function replace_refs_in_post_content( WP_Post $post, array $created_refs ) {
+		// Check the post content to see if any refs need replacement.
+		if ( preg_match( '/\{\{ .+? \}\}/', $post->post_content ) ) {
+			$refs_map = array_reduce(
+				$created_refs,
+				function ( $map, $ref ) {
+					if ( $ref instanceof WP_Post ) {
+						$id        = $ref->ID;
+						$source_id = get_post_meta( $id, 'sst_source_id', true );
+					} elseif ( $ref instanceof WP_Term ) {
+						$id        = $ref->term_id;
+						$source_id = get_term_meta( $id, 'sst_source_id', true );
+					}
+					if ( ! empty( $source_id ) && ! empty( $id ) ) {
+						$map[ $source_id ] = $id;
+					}
+
+					return $map;
+				},
+				[]
+			);
+
+			$updated_content = preg_replace_callback(
+				'/\{\{ (.*?) \}\}/',
+				function ( $matches ) use ( $refs_map ) {
+					$data = explode( ' | ', $matches[1] );
+
+					// Ensure at least two segments: source id and what to do with it.
+					if ( count( $data ) < 2 ) {
+						return '';
+					}
+
+					// Validate there is something to replace with.
+					if ( empty( $refs_map[ $data[0] ] ) ) {
+						return '';
+					}
+
+					// Run the replacement!
+					if ( 'to: id' === $data[1] ) {
+						return $refs_map[ $data[0] ];
+					}
+					if ( 'to: url' === $data[1] ) {
+						return wp_get_attachment_image_url(
+							$refs_map[ $data[0] ],
+							'full'
+						);
+					}
+
+					return '';
+				},
+				$post->post_content
+			);
+
+			if ( $updated_content !== $post->post_content ) {
+				wp_update_post(
+					[
+						'ID'           => $post->ID,
+						'post_content' => $updated_content,
+					]
+				);
+			}
+		}
 	}
 }
