@@ -21,6 +21,27 @@ use WP_Term;
 class REST_API extends WP_REST_Controller {
 
 	/**
+	 * Refs created by the request.
+	 *
+	 * @var array
+	 */
+	protected $created_refs = [];
+
+	/**
+	 * Non-fatal errors.
+	 *
+	 * @var array
+	 */
+	protected $errors = [];
+
+	/**
+	 * Store the objects created during the request for the API response.
+	 *
+	 * @var array
+	 */
+	protected $response_objects = [];
+
+	/**
 	 * Constructor.
 	 */
 	public function __construct() {
@@ -244,29 +265,40 @@ class REST_API extends WP_REST_Controller {
 	}
 
 	/**
+	 * Record a non-fatal error to add to the response.
+	 *
+	 * @param \WP_Error $error Non-fatal error.
+	 */
+	protected function add_nonfatal_error( WP_Error $error ) {
+		$this->errors[] = $error;
+	}
+
+	/**
 	 * Add a created object to the response.
 	 *
-	 * @param array           $response Response array to which to add an
-	 *                                  object.
-	 * @param WP_Post|WP_Term $object   Post or term object.
-	 * @return array
+	 * @param WP_Post|WP_Term $object Post or term object.
+	 * @return bool True on success, false on failure.
 	 */
-	protected function add_object_to_response( array $response, $object ): array {
+	protected function add_object_to_response( $object ): bool {
 		if ( $object instanceof WP_Post ) {
-			$response['posts'][] = [
+			$this->response_objects['posts'][] = [
 				'post_id'       => $object->ID,
 				'post_type'     => $object->post_type,
 				'sst_source_id' => get_post_meta( $object->ID, 'sst_source_id', true ),
 			];
+
+			return true;
 		} elseif ( $object instanceof WP_Term ) {
-			$response['terms'][] = [
+			$this->response_objects['terms'][] = [
 				'term_id'  => $object->term_id,
 				'taxonomy' => $object->taxonomy,
 				'slug'     => $object->slug,
 			];
+
+			return true;
 		}
 
-		return $response;
+		return false;
 	}
 
 	/**
@@ -303,10 +335,18 @@ class REST_API extends WP_REST_Controller {
 			if ( is_array( $values ) ) {
 				delete_post_meta( $post_id, $key );
 				foreach ( $values as $value ) {
-					add_post_meta( $post_id, $key, $value );
+					add_post_meta(
+						$post_id,
+						$key,
+						$this->replace_refs_in_meta_value( $value )
+					);
 				}
 			} else {
-				update_post_meta( $post_id, $key, $values );
+				update_post_meta(
+					$post_id,
+					$key,
+					$this->replace_refs_in_meta_value( $values )
+				);
 			}
 		}
 
@@ -347,10 +387,18 @@ class REST_API extends WP_REST_Controller {
 			if ( is_array( $values ) ) {
 				delete_term_meta( $term_id, $key );
 				foreach ( $values as $value ) {
-					add_term_meta( $term_id, $key, $value );
+					add_term_meta(
+						$term_id,
+						$key,
+						$this->replace_refs_in_meta_value( $value )
+					);
 				}
 			} else {
-				update_term_meta( $term_id, $key, $values );
+				update_term_meta(
+					$term_id,
+					$key,
+					$this->replace_refs_in_meta_value( $values )
+				);
 			}
 		}
 
@@ -390,10 +438,11 @@ class REST_API extends WP_REST_Controller {
 	 * @return WP_Error|WP_Post Post object on success, WP_Error on failure.
 	 */
 	protected function download_image( int $post_id, array $reference ) {
-		$source = $reference['args'];
+		$source    = $reference['args'];
+		$source_id = $reference['sst_source_id'];
 
 		// Move the source id to meta.
-		$source['meta']['sst_source_id'] = $reference['sst_source_id'];
+		$source['meta']['sst_source_id'] = $source_id;
 
 		// Download the image to WordPress.
 		$image_id = $this->media_sideload_image(
@@ -418,7 +467,18 @@ class REST_API extends WP_REST_Controller {
 		}
 		$this->save_post_meta( $image_id, $source );
 
-		return get_post( $image_id );
+		$post = get_post( $image_id );
+
+		// Add the object to the response.
+		$this->add_object_to_response( $post );
+
+		// Store the created ref for use later.
+		$this->created_refs[ $source_id ] = [
+			'id'     => $image_id,
+			'object' => $post,
+		];
+
+		return $post;
 	}
 
 	/**
@@ -428,13 +488,19 @@ class REST_API extends WP_REST_Controller {
 	 * @return WP_Error|WP_Post Post object on success, WP_Error on failure.
 	 */
 	protected function create_ref_post( array $reference ) {
-		$source = $reference['args'];
+		$source    = $reference['args'];
+		$source_id = $reference['sst_source_id'];
+
+		// Don't create the post if we've already done so during this request.
+		if ( ! empty( $this->created_refs[ $source_id ] ) ) {
+			return $this->created_refs[ $source_id ]['object'];
+		}
 
 		// Move the source id to meta.
-		$source['meta']['sst_source_id'] = $reference['sst_source_id'];
+		$source['meta']['sst_source_id'] = $source_id;
 
 		$post_arr = [
-			'post_title' => $source['title'] ?? $reference['sst_source_id'],
+			'post_title' => $source['title'] ?? $source_id,
 			'post_type'  => $reference['subtype'],
 		];
 
@@ -447,7 +513,18 @@ class REST_API extends WP_REST_Controller {
 		// Save meta for the post.
 		$this->save_post_meta( $post_id, $source );
 
-		return get_post( $post_id );
+		$post = get_post( $post_id );
+
+		// Add the object to the response.
+		$this->add_object_to_response( $post );
+
+		// Store the created ref for use later.
+		$this->created_refs[ $source_id ] = [
+			'id'     => $post_id,
+			'object' => $post,
+		];
+
+		return $post;
 	}
 
 	/**
@@ -460,13 +537,27 @@ class REST_API extends WP_REST_Controller {
 	protected function create_ref_term( array $reference, int $post_id ) {
 		$source = $reference['args'];
 
-		// Move the source id to meta.
-		if ( ! empty( $reference['sst_source_id'] ) ) {
-			$source['meta']['sst_source_id'] = $reference['sst_source_id'];
+		if (
+			empty( $reference['sst_source_id'] )
+			&& empty( $source['title'] )
+			&& empty( $source['slug'] )
+		) {
+			return new WP_Error(
+				'invalid-reference-term',
+				__( 'Terms must contain at least a title, slug, or sst_source_id.', 'sst' )
+			);
 		}
 
-		$name     = $source['title'] ?? $reference['sst_source_id'];
+		$name     = $source['title'] ?? $source['slug'] ?? $reference['sst_source_id'];
 		$taxonomy = $reference['subtype'];
+
+		// Move the source id to meta.
+		if ( ! empty( $reference['sst_source_id'] ) ) {
+			$source_id                       = $reference['sst_source_id'];
+			$source['meta']['sst_source_id'] = $source_id;
+		} else {
+			$source_id = $name;
+		}
 
 		// Allow for setting the parent and the slug.
 		$args = [];
@@ -492,7 +583,18 @@ class REST_API extends WP_REST_Controller {
 		// Save meta for the term.
 		$this->save_term_meta( $term_id, $source );
 
-		return get_term( $term_id );
+		$term = get_term( $term_id );
+
+		// Add the object to the response.
+		$this->add_object_to_response( $term );
+
+		// Store the created ref for use later.
+		$this->created_refs[ $source_id ] = [
+			'id'     => $term_id,
+			'object' => $term,
+		];
+
+		return $term;
 	}
 
 	/**
@@ -502,15 +604,10 @@ class REST_API extends WP_REST_Controller {
 	 *                                 references.
 	 * @param WP_REST_Request $request REST API request containing the
 	 *                                  references to create.
-	 * @return array Array containing a mix of WP_Post, WP_Term, and WP_Error
-	 *               objects, depending on the type of reference and if it is
-	 *               successfully created or not.
 	 */
-	protected function create_refs( int $post_id, WP_REST_Request $request ): array {
-		$return = [];
-
+	protected function create_refs( int $post_id, WP_REST_Request $request ) {
 		if ( empty( $request['references'] ) ) {
-			return $return;
+			return;
 		}
 
 		foreach ( $request['references'] as $reference ) {
@@ -537,12 +634,14 @@ class REST_API extends WP_REST_Controller {
 				$request
 			);
 			if ( null !== $result ) {
-				if (
-					is_wp_error( $result )
-					|| $result instanceof WP_Post
+				if ( is_wp_error( $result ) ) {
+					$this->add_nonfatal_error( $result );
+				} elseif (
+					$result instanceof WP_Post
 					|| $result instanceof WP_Term
 				) {
-					$return[] = $result;
+					// Add the object to the response.
+					$this->add_object_to_response( $result );
 				}
 				continue;
 			}
@@ -584,6 +683,11 @@ class REST_API extends WP_REST_Controller {
 				$request
 			);
 
+			if ( is_wp_error( $result ) ) {
+				$this->add_nonfatal_error( $result );
+				continue;
+			}
+
 			// If `save_to_meta` is set, store the resulting ID in that key.
 			if ( ! empty( $reference['save_to_meta'] ) ) {
 				$object_id = false;
@@ -599,18 +703,7 @@ class REST_API extends WP_REST_Controller {
 					true
 				);
 			}
-
-			// Only include posts, terms, and errors in the return array.
-			if (
-				is_wp_error( $result )
-				|| $result instanceof WP_Post
-				|| $result instanceof WP_Term
-			) {
-				$return[] = $result;
-			}
 		}
-
-		return $return;
 	}
 
 	/**
@@ -657,9 +750,9 @@ class REST_API extends WP_REST_Controller {
 	public function create_item( $request ) {
 		$this->add_sst_request_filters();
 
-		$created_objects = [
-			'errors' => [],
-		];
+		$this->created_refs     = [];
+		$this->errors           = [];
+		$this->response_objects = [];
 
 		// Validate the post to be inserted.
 		$prepared_post = $this->prepare_item_for_database( $request );
@@ -707,27 +800,26 @@ class REST_API extends WP_REST_Controller {
 
 		$post = get_post( $data['id'] );
 
+		// Create reference objects.
+		$this->create_refs( $post->ID, $request );
+
+		// Replace any refs that might appear in content.
+		$this->replace_refs_in_post_content( $post, $this->created_refs );
+
 		// Save the post meta.
 		$this->save_post_meta( $post->ID, $request );
 
-		// Add the created post to the response.
-		$created_objects = $this->add_object_to_response(
-			$created_objects,
-			$post
+		// Add the created post to the beginning of the response.
+		$this->response_objects['posts'] = array_merge(
+			[
+				[
+					'post_id'       => $post->ID,
+					'post_type'     => $post->post_type,
+					'sst_source_id' => get_post_meta( $post->ID, 'sst_source_id', true ),
+				],
+			],
+			$this->response_objects['posts'] ?? []
 		);
-
-		// Create reference objects.
-		$created_refs = $this->create_refs( $post->ID, $request );
-		foreach ( $created_refs as $created_ref ) {
-			if ( is_wp_error( $created_ref ) ) {
-				$created_objects['errors'][] = $created_ref->get_error_message();
-			} else {
-				$created_objects = $this->add_object_to_response(
-					$created_objects,
-					$created_ref
-				);
-			}
-		}
 
 		// Save additional fields added to the request.
 		$fields_update = $this->update_additional_fields_for_object( $post, $request );
@@ -736,7 +828,14 @@ class REST_API extends WP_REST_Controller {
 		}
 
 		// Set the API response.
-		$api_response = rest_ensure_response( $created_objects );
+		$api_response = rest_ensure_response(
+			array_merge(
+				$this->response_objects,
+				[
+					'errors' => $this->errors,
+				]
+			)
+		);
 		$api_response->set_status( 201 );
 		return $api_response;
 	}
@@ -1279,5 +1378,97 @@ class REST_API extends WP_REST_Controller {
 		}
 
 		return $values;
+	}
+
+	/**
+	 * Replace refs in post content.
+	 *
+	 * @param WP_Post $post Post object.
+	 */
+	protected function replace_refs_in_post_content( WP_Post $post ) {
+		// Check the post content to see if any refs need replacement.
+		$updated_content = $this->replace_refs_in_string( $post->post_content );
+
+		if (
+			! empty( $updated_content )
+			&& $updated_content !== $post->post_content
+		) {
+			wp_update_post(
+				[
+					'ID'           => $post->ID,
+					'post_content' => $updated_content,
+				]
+			);
+		}
+	}
+
+	/**
+	 * Replace refs in a meta value.
+	 *
+	 * @param string $value Meta value.
+	 * @return string
+	 */
+	protected function replace_refs_in_meta_value( string $value ): string {
+		// Check the post content to see if any refs need replacement.
+		$updated_value = $this->replace_refs_in_string( $value );
+
+		if ( ! empty( $updated_value ) && $updated_value !== $value ) {
+			return $updated_value;
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Replace refs in a string.
+	 *
+	 * The ref format is as follows:
+	 *
+	 *     {{ <source id> | to <field> }}
+	 *
+	 * <field> may be one of id or url.
+	 *
+	 * @param string $value Value to search for refs.
+	 * @return string|null String with replaced content on success, null on
+	 *                     failure or if nothing was replaced.
+	 */
+	protected function replace_refs_in_string( string $value ) {
+		if (
+			! empty( $this->created_refs )
+			&& preg_match( '/\{\{ .+? \}\}/', $value )
+		) {
+			return preg_replace_callback(
+				'/\{\{ (.*?) \}\}/',
+				function ( $matches ) {
+					$data = explode( ' | ', $matches[1] );
+
+					// Ensure at least two segments: source id and what to do with it.
+					if ( count( $data ) < 2 ) {
+						return '';
+					}
+
+					// Validate there is something to replace with.
+					if ( empty( $this->created_refs[ $data[0] ]['id'] ) ) {
+						return '';
+					}
+
+					// Run the replacement!
+					if ( 'to id' === $data[1] ) {
+						return $this->created_refs[ $data[0] ]['id'];
+					}
+					if ( 'to url' === $data[1] ) {
+						return wp_get_attachment_image_url(
+							$this->created_refs[ $data[0] ]['id'],
+							'full'
+						);
+					}
+
+					return '';
+				},
+				$value
+			);
+		}
+
+		return null;
 	}
 }
