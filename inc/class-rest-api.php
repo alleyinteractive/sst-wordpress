@@ -373,7 +373,7 @@ class REST_API extends WP_REST_Controller {
 	 * @return string|WP_Error Populated HTML img tag on success, WP_Error
 	 *                         object otherwise.
 	 */
-	protected function media_sideload_image( $file, $post_id, $desc = null, $return = 'html' ) {
+	public static function media_sideload_image( $file, $post_id, $desc = null, $return = 'html' ) {
 		if ( ! function_exists( 'media_sideload_image' ) ) {
 			require_once ABSPATH . 'wp-admin/includes/file.php';
 			require_once ABSPATH . 'wp-admin/includes/image.php';
