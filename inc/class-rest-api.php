@@ -1424,7 +1424,7 @@ class REST_API extends WP_REST_Controller {
 	 *
 	 * The ref format is as follows:
 	 *
-	 *     {{ <source id> | to: <field> }}
+	 *     {{ <source id> | to <field> }}
 	 *
 	 * <field> may be one of id or url.
 	 *
@@ -1453,10 +1453,10 @@ class REST_API extends WP_REST_Controller {
 					}
 
 					// Run the replacement!
-					if ( 'to: id' === $data[1] ) {
+					if ( 'to id' === $data[1] ) {
 						return $this->created_refs[ $data[0] ]['id'];
 					}
-					if ( 'to: url' === $data[1] ) {
+					if ( 'to url' === $data[1] ) {
 						return wp_get_attachment_image_url(
 							$this->created_refs[ $data[0] ]['id'],
 							'full'

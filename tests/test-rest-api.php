@@ -545,8 +545,8 @@ class Test_REST_API extends \WP_UnitTestCase {
 
 		$content = <<<EOT
 
-<!-- wp:image {"id":{{ {$sst_source_id} | to: id }}} -->
-<figure class="wp-block-image"><img src="{{ {$sst_source_id} | to: url }}" alt="" class="wp-image-{{ {$sst_source_id} | to: id }}"/></figure>
+<!-- wp:image {"id":{{ {$sst_source_id} | to id }}} -->
+<figure class="wp-block-image"><img src="{{ {$sst_source_id} | to url }}" alt="" class="wp-image-{{ {$sst_source_id} | to id }}" /></figure>
 <!-- /wp:image -->
 
 EOT;
@@ -554,7 +554,7 @@ EOT;
 		$replaced_content = <<<EOT
 
 <!-- wp:image {"id":%1\$d} -->
-<figure class="wp-block-image"><img src="%2\$s" alt="" class="wp-image-%1\$d"/></figure>
+<figure class="wp-block-image"><img src="%2\$s" alt="" class="wp-image-%1\$d" /></figure>
 <!-- /wp:image -->
 
 EOT;
@@ -593,7 +593,7 @@ EOT;
 		$data = $this->create_post_request_with_defaults(
 			[
 				'meta'       => [
-					'ref_key'       => "{{ {$sst_source_id} | to: id }}",
+					'ref_key'       => "{{ {$sst_source_id} | to id }}",
 				],
 				'references' => [
 					[
