@@ -267,10 +267,10 @@ class REST_API extends WP_REST_Controller {
 	/**
 	 * Record a non-fatal error to add to the response.
 	 *
-	 * @param \WP_Error $error Non-fatal error.
+	 * @param WP_Error $error Non-fatal error.
 	 */
 	protected function add_nonfatal_error( WP_Error $error ) {
-		$this->errors[] = $error;
+		$this->errors[] = $error->get_error_message();
 	}
 
 	/**
@@ -559,10 +559,30 @@ class REST_API extends WP_REST_Controller {
 			$source_id = $name;
 		}
 
+		// Don't create the term if we've already done so during this request.
+		if ( ! empty( $this->created_refs[ $source_id ] ) ) {
+			return $this->created_refs[ $source_id ]['object'];
+		}
+
 		// Allow for setting the parent and the slug.
 		$args = [];
 		if ( ! empty( $source['parent'] ) ) {
-			$args['parent'] = $source['parent'];
+			if ( is_array( $source['parent'] ) ) {
+				$parent = $this->create_ref_term(
+					[
+						'type'    => 'term',
+						'subtype' => $reference['subtype'],
+						'args'    => $source['parent'],
+					],
+					$post_id
+				);
+				if ( is_wp_error( $parent ) ) {
+					return $parent;
+				}
+				$args['parent'] = $parent->term_id;
+			} elseif ( is_int( $source['parent'] ) ) {
+				$args['parent'] = $source['parent'];
+			}
 		}
 		if ( ! empty( $source['slug'] ) ) {
 			$args['slug'] = $source['slug'];

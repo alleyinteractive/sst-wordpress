@@ -86,6 +86,12 @@ class Test_REST_API extends \WP_UnitTestCase {
 
 		$data = $response->get_data();
 		$this->assertFalse( empty( $data['posts'][0]['post_id'] ) );
+		if ( ! empty( $data['errors'] ) ) {
+			$this->fail(
+				"Request encountered non-fatal errors:\n* "
+				. implode( "\n* ", $data['errors'] )
+			);
+		}
 
 		$post = get_post( $data['posts'][0]['post_id'] );
 		$this->assertSame( $post->ID, $data['posts'][0]['post_id'] );
@@ -451,6 +457,82 @@ class Test_REST_API extends \WP_UnitTestCase {
 			'test value',
 			get_term_meta( $term_id, 'test-key', true )
 		);
+	}
+
+	public function test_post_with_hierarchical_ref_terms() {
+		$title_1        = 'term-12';
+		$title_2        = 'term-34';
+		$title_3        = 'term-56';
+		$parent_title_1 = 'parent-78';
+		$parent_title_2 = 'parent-90';
+		$expected_terms = [
+			$title_1        => $parent_title_1,
+			$title_2        => $parent_title_1,
+			$title_3        => $parent_title_2,
+			$parent_title_1 => 0,
+			$parent_title_2 => 0,
+		];
+
+		$data = $this->create_post_request_with_defaults(
+			[
+				'references' => [
+					[
+						'type'    => 'term',
+						'subtype' => 'category',
+						'args'    => [
+							'title'  => $title_1,
+							'parent' => [
+								'title' => $parent_title_1,
+							],
+						],
+					],
+					[
+						'type'    => 'term',
+						'subtype' => 'category',
+						'args'    => [
+							'title' => $parent_title_1,
+						],
+					],
+					[
+						'type'    => 'term',
+						'subtype' => 'category',
+						'args'    => [
+							'title'  => $title_2,
+							'parent' => [
+								'title' => $parent_title_1,
+							],
+						],
+					],
+					[
+						'type'    => 'term',
+						'subtype' => 'category',
+						'args'    => [
+							'title'  => $title_3,
+							'parent' => [
+								'title' => $parent_title_2,
+							],
+						],
+					],
+				],
+			]
+		);
+
+		$this->assertFalse( empty( $data['posts'][0]['post_id'] ) );
+		$this->assertCount( 5, $data['terms'] );
+
+		$created_terms = [];
+		foreach ( $data['terms'] as $key => $resp ) {
+			$this->assertFalse( empty( $resp['term_id'] ) );
+			$term = get_term( $resp['term_id'] );
+			$this->assertInstanceOf( '\WP_Term', $term );
+			$this->assertSame( 'category', $term->taxonomy );
+			$created_terms[ $term->name ] = $term->parent
+				? get_term( $term->parent )->name
+				: 0;
+		}
+
+		// Assert that the term is attached to the post.
+		$this->assertEqualSetsWithIndex( $expected_terms, $created_terms );
 	}
 
 	public function test_post_with_featured_image() {
