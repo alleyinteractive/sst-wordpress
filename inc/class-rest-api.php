@@ -1289,14 +1289,47 @@ class REST_API extends WP_REST_Controller {
 	/**
 	 * Replace refs in post content.
 	 *
-	 * @param WP_Post $post         Post object.
-	 * @param array   $created_refs Refs created by the request.
+	 * @param WP_Post $post Post object.
+	 * @param array   $refs Refs created by the request.
 	 */
-	protected function replace_refs_in_post_content( WP_Post $post, array $created_refs ) {
+	protected function replace_refs_in_post_content( WP_Post $post, array $refs ) {
 		// Check the post content to see if any refs need replacement.
-		if ( preg_match( '/\{\{ .+? \}\}/', $post->post_content ) ) {
+		$updated_content = $this->replace_refs_in_string(
+			$post->post_content,
+			$refs
+		);
+
+		if (
+			! empty( $updated_content )
+			&& $updated_content !== $post->post_content
+		) {
+			wp_update_post(
+				[
+					'ID'           => $post->ID,
+					'post_content' => $updated_content,
+				]
+			);
+		}
+	}
+
+	/**
+	 * Replace refs in a string.
+	 *
+	 * The ref format is as follows:
+	 *
+	 *     {{ <source id> | to: <field> }}
+	 *
+	 * <field> may be one of id or url.
+	 *
+	 * @param string $value Value to search for refs.
+	 * @param array  $refs  Refs created in the request.
+	 * @return string|null String with replaced content on success, null on
+	 *                     failure or if nothing was replaced.
+	 */
+	protected function replace_refs_in_string( string $value, array $refs ) {
+		if ( ! empty( $refs ) && preg_match( '/\{\{ .+? \}\}/', $value ) ) {
 			$refs_map = array_reduce(
-				$created_refs,
+				$refs,
 				function ( $map, $ref ) {
 					if ( $ref instanceof WP_Post ) {
 						$id        = $ref->ID;
@@ -1314,7 +1347,7 @@ class REST_API extends WP_REST_Controller {
 				[]
 			);
 
-			$updated_content = preg_replace_callback(
+			return preg_replace_callback(
 				'/\{\{ (.*?) \}\}/',
 				function ( $matches ) use ( $refs_map ) {
 					$data = explode( ' | ', $matches[1] );
@@ -1342,17 +1375,10 @@ class REST_API extends WP_REST_Controller {
 
 					return '';
 				},
-				$post->post_content
+				$value
 			);
-
-			if ( $updated_content !== $post->post_content ) {
-				wp_update_post(
-					[
-						'ID'           => $post->ID,
-						'post_content' => $updated_content,
-					]
-				);
-			}
 		}
+
+		return null;
 	}
 }
