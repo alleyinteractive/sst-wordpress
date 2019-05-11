@@ -727,6 +727,33 @@ class REST_API extends WP_REST_Controller {
 	}
 
 	/**
+	 * Build refs, set post meta, replace refs, and set additional fields for an
+	 * update or create request.
+	 *
+	 * @param WP_REST_Request $request REST request.
+	 * @param WP_Post         $post    Post object.
+	 * @return bool|WP_Error True on success, WP_Error on failure.
+	 */
+	protected function set_additional_data_for_request( WP_REST_Request $request, WP_Post $post ) {
+		// Create reference objects.
+		$this->create_refs( $post->ID, $request );
+
+		// Replace any refs that might appear in content.
+		$this->replace_refs_in_post_content( $post );
+
+		// Save the post meta.
+		$this->save_post_meta( $post->ID, $request );
+
+		// Save additional fields added to the request.
+		$fields_update = $this->update_additional_fields_for_object( $post, $request );
+		if ( is_wp_error( $fields_update ) ) {
+			return $fields_update;
+		}
+
+		return true;
+	}
+
+	/**
 	 * Check if the current user is allowed to authenticate SST.
 	 */
 	protected function authenticate_sst_permissions_check() {
@@ -819,15 +846,13 @@ class REST_API extends WP_REST_Controller {
 		}
 
 		$post = get_post( $data['id'] );
-
-		// Create reference objects.
-		$this->create_refs( $post->ID, $request );
-
-		// Replace any refs that might appear in content.
-		$this->replace_refs_in_post_content( $post, $this->created_refs );
-
-		// Save the post meta.
-		$this->save_post_meta( $post->ID, $request );
+		$addl_data_result = $this->set_additional_data_for_request(
+			$request,
+			$post
+		);
+		if ( is_wp_error( $addl_data_result ) ) {
+			return $addl_data_result;
+		}
 
 		// Add the created post to the beginning of the response.
 		$this->response_objects['posts'] = array_merge(
@@ -840,12 +865,6 @@ class REST_API extends WP_REST_Controller {
 			],
 			$this->response_objects['posts'] ?? []
 		);
-
-		// Save additional fields added to the request.
-		$fields_update = $this->update_additional_fields_for_object( $post, $request );
-		if ( is_wp_error( $fields_update ) ) {
-			return $fields_update;
-		}
 
 		// Set the API response.
 		$api_response = rest_ensure_response(
@@ -886,11 +905,79 @@ class REST_API extends WP_REST_Controller {
 	public function update_item( $request ) {
 		$this->add_sst_request_filters();
 
-		$data = [];
+		$this->created_refs     = [];
+		$this->errors           = [];
+		$this->response_objects = [];
 
-		$response = rest_ensure_response( $data );
+		$post_id = $request->get_param( 'id' );
 
-		return $response;
+		// Validate the post to be updated.
+		$prepared_post = $this->prepare_item_for_database( $request );
+		if ( is_wp_error( $prepared_post ) ) {
+			return $prepared_post;
+		}
+
+		// Defer to the core REST API endpoint to update the post.
+		$post_type_obj = get_post_type_object( $request['type'] );
+		$response      = $this->dispatch_request(
+			'PUT',
+			sprintf(
+				'/wp/v2/%s/%d',
+				( $post_type_obj->rest_base ?: $post_type_obj->name ),
+				$post_id
+			),
+			[ 'body' => $prepared_post ]
+		);
+
+		// Confirm the response from the core endpoint.
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		} elseif ( $response->get_status() >= 400 ) {
+			return $response;
+		} elseif ( 200 !== $response->get_status() ) {
+			return new WP_Error(
+				'unexpected-response',
+				sprintf(
+					/* translators: %d: response code from creating post */
+					__( 'Unexpected response creating post: %d.', 'sst' ),
+					$response->get_status()
+				),
+				[ 'status' => 400 ]
+			);
+		}
+
+		// Add the created object to this endpoint's response.
+		$data = $response->get_data();
+		if ( empty( $data['id'] ) || $data['id'] !== $post_id ) {
+			return new WP_Error(
+				'missing-post-id',
+				sprintf(
+					__( 'Missing the ID of the updated post in core response.', 'sst' ),
+					$response->get_status()
+				),
+				[ 'status' => 400 ]
+			);
+		}
+
+		$addl_data_result = $this->set_additional_data_for_request(
+			$request,
+			get_post( $post_id )
+		);
+		if ( is_wp_error( $addl_data_result ) ) {
+			return $addl_data_result;
+		}
+
+		// Set the API response.
+		$api_response = rest_ensure_response(
+			array_merge(
+				$this->response_objects,
+				[
+					'errors' => $this->errors,
+				]
+			)
+		);
+		$api_response->set_status( 200 );
+		return $api_response;
 	}
 
 	/**
@@ -906,24 +993,13 @@ class REST_API extends WP_REST_Controller {
 		$post_type = $post_data['type'];
 
 		// First, check required fields.
-		if ( empty( $request['meta']['sst_source_id'] ) ) {
+		if (
+			empty( $request['meta']['sst_source_id'] )
+			&& WP_REST_Server::CREATABLE === $request->get_method()
+		) {
 			return new WP_Error(
 				'empty-source_id',
 				__( 'Post is missing source ID (`meta.sst_source_id`)', 'sst' ),
-				[ 'status' => 400 ]
-			);
-		}
-		if ( empty( $request['title'] ) ) {
-			return new WP_Error(
-				'empty-title',
-				__( 'Post is missing title (`title`)', 'sst' ),
-				[ 'status' => 400 ]
-			);
-		}
-		if ( empty( $request['type'] ) ) {
-			return new WP_Error(
-				'empty-type',
-				__( 'Post is missing post type (`type`)', 'sst' ),
 				[ 'status' => 400 ]
 			);
 		}
@@ -1010,6 +1086,25 @@ class REST_API extends WP_REST_Controller {
 		];
 
 		return $schema;
+	}
+
+	/**
+	 * Retrieves an array of endpoint arguments from the item schema for the controller.
+	 *
+	 * @param string $method Optional. HTTP method of the request. The arguments
+	 *                       for `CREATABLE` requests are checked for required
+	 *                       values and may fall-back to a given default, this
+	 *                       is not done on `EDITABLE` requests. Default
+	 *                       WP_REST_Server::CREATABLE.
+	 * @return array Endpoint arguments.
+	 */
+	public function get_endpoint_args_for_item_schema( $method = WP_REST_Server::CREATABLE ) {
+		$endpoint_args = parent::get_endpoint_args_for_item_schema( $method );
+		if ( WP_REST_Server::EDITABLE === $method ) {
+			// Update requests still require the post type.
+			$endpoint_args['type']['required'] = true;
+		}
+		return $endpoint_args;
 	}
 
 	/**
