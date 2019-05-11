@@ -845,7 +845,7 @@ class REST_API extends WP_REST_Controller {
 			);
 		}
 
-		$post = get_post( $data['id'] );
+		$post             = get_post( $data['id'] );
 		$addl_data_result = $this->set_additional_data_for_request(
 			$request,
 			$post
