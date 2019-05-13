@@ -50,6 +50,16 @@ class Test_REST_API extends \WP_UnitTestCase {
 		return rest_get_server()->dispatch( $request );
 	}
 
+	protected function update_post_request( $id, $params ) {
+		wp_set_current_user( self::$admin_id );
+
+		$request = new \WP_REST_Request( 'PUT', '/sst/v1/post/' . $id );
+		$request->add_header( 'content-type', 'application/json' );
+		$request->set_body( wp_json_encode( $params ) );
+
+		return rest_get_server()->dispatch( $request );
+	}
+
 	protected function create_post_request_with_defaults( $overrides = [] ) {
 		$params = $this->set_post_data( $overrides );
 		$response = $this->create_post_request( $params );
@@ -131,6 +141,26 @@ class Test_REST_API extends \WP_UnitTestCase {
 		$data = $response->get_data();
 		$this->assertSame( $params['meta']['sst_source_id'], $data['posts'][0]['sst_source_id'] );
 		$this->assertSame( $params['type'], $data['posts'][0]['post_type'] );
+	}
+
+	public function test_update_basic_promise_post() {
+		$title = 'Updating Post';
+		$id = self::factory()->post->create( [ 'post_type' => 'sst-promise' ] );
+
+		$response = $this->update_post_request(
+			$id,
+			[
+				'title' => $title,
+				'type'  => 'sst-promise',
+			]
+		);
+
+		$this->assertNotWPError( $response );
+		$this->assertInstanceOf( '\WP_REST_Response', $response );
+		$this->assertEquals( 200, $response->get_status() );
+
+		$data = $response->get_data();
+		$this->assertSame( $title, get_the_title( $id ) );
 	}
 
 	public function test_sst_permissions() {
