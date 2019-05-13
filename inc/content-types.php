@@ -19,6 +19,7 @@ function register_promise_post_type() {
 		'taxonomies'   => array_keys( get_taxonomies() ),
 		'can_export'   => false,
 		'show_in_rest' => true,
+		'rewrite'      => false,
 	];
 	register_post_type( 'sst-promise', $promise_args );
 }
