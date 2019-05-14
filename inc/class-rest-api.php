@@ -292,7 +292,7 @@ class REST_API extends WP_REST_Controller {
 			$this->response_objects['terms'][] = [
 				'term_id'  => $object->term_id,
 				'taxonomy' => $object->taxonomy,
-				'slug'     => $object->slug,
+				'name'     => $object->name,
 			];
 
 			return true;
