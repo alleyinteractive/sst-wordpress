@@ -99,6 +99,7 @@ class REST_API extends WP_REST_Controller {
 		}
 		add_filter( 'wp_insert_post_data', [ $this, 'prevent_updates_from_overwriting_modified_date' ], 5, 2 );
 		add_filter( 'wp_insert_post_data', [ $this, 'set_modified_for_real' ], 10, 2 );
+		add_filter( 'wp_insert_attachment_data', [ $this, 'filter_attachment_guid' ] );
 	}
 
 	/**
@@ -448,7 +449,7 @@ class REST_API extends WP_REST_Controller {
 		$image_id = $this->media_sideload_image(
 			$source['url'],
 			$post_id,
-			$source['title'] ?? '',
+			! empty( $source['title'] ) ? $source['title'] : null,
 			'id'
 		);
 
@@ -1585,5 +1586,23 @@ class REST_API extends WP_REST_Controller {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Force a 255-character limit on the GUID of incoming attachment data.
+	 *
+	 * Intended for the {@see 'wp_insert_attachment_data'} filter.
+	 *
+	 * @see https://core.trac.wordpress.org/ticket/47296,
+	 *      https://core.trac.wordpress.org/ticket/32315.
+	 *
+	 * @param array $data Sanitized attachment post data.
+	 * @return array Updated post data.
+	 */
+	public function filter_attachment_guid( $data ) {
+		if ( ( isset( $data['post_type'] ) && 'attachment' === $data['post_type'] ) && isset( $data['guid'] ) ) {
+			$data['guid'] = substr( $data['guid'], 0, 255 );
+		}
+		return $data;
 	}
 }
