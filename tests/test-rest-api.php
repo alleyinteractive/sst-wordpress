@@ -795,7 +795,7 @@ EOT;
 	}
 
 	public function test_replace_file_ref_in_content() {
-		$sst_source_id = 'file:667788';
+		$sst_source_id = 'file-667788';
 		$url           = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
 
 		$content = <<<EOT
