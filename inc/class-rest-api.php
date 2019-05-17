@@ -94,7 +94,7 @@ class REST_API extends WP_REST_Controller {
 	 * REST requests.
 	 */
 	public function add_sst_request_filters() {
-		foreach ( get_post_types() as $post_type ) {
+		foreach ( get_post_types( [ 'show_in_rest' => true ] ) as $post_type ) {
 			add_filter( "rest_pre_insert_{$post_type}", [ $this, 'set_modified' ], 10, 2 );
 		}
 		add_filter( 'wp_insert_post_data', [ $this, 'prevent_updates_from_overwriting_modified_date' ], 5, 2 );
@@ -1115,8 +1115,7 @@ class REST_API extends WP_REST_Controller {
 	 * @return array Item schema data.
 	 */
 	public function get_item_schema() {
-		$available_post_types = array_values( get_post_types() );
-		$taxonomies           = get_taxonomies( [], 'objects' );
+		$rest_post_types = array_values( get_post_types( [ 'show_in_rest' => true ] ) );
 
 		$schema = [
 			'$schema'    => 'http://json-schema.org/draft-04/schema#',
@@ -1159,7 +1158,7 @@ class REST_API extends WP_REST_Controller {
 				'type'           => [
 					'description' => __( 'Type of Post for the object.', 'sst' ),
 					'type'        => 'string',
-					'enum'        => $available_post_types,
+					'enum'        => $rest_post_types,
 					'required'    => true,
 				],
 				'parent'         => [
@@ -1272,8 +1271,8 @@ class REST_API extends WP_REST_Controller {
 								'type'        => 'string',
 								'required'    => true,
 								'enum'        => array_merge(
-									$available_post_types,
-									array_keys( $taxonomies )
+									array_values( get_post_types() ),
+									array_values( get_taxonomies() )
 								),
 							],
 							'sst_source_id' => [
@@ -1316,7 +1315,9 @@ class REST_API extends WP_REST_Controller {
 			],
 		];
 
-		foreach ( $taxonomies as $taxonomy ) {
+		// Build a list of taxonomies available across all REST post types.
+		$available_taxonomies = get_object_taxonomies( $rest_post_types, 'objects' );
+		foreach ( $available_taxonomies as $taxonomy ) {
 			$base = ! empty( $taxonomy->rest_base ) ? $taxonomy->rest_base : $taxonomy->name;
 
 			$schema['properties'][ $base ] = [
