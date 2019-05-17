@@ -342,14 +342,14 @@ class REST_API extends WP_REST_Controller {
 					add_post_meta(
 						$post_id,
 						$key,
-						$this->replace_refs_in_meta_value( $value )
+						$this->replace_refs_in_meta_value( $value, $key )
 					);
 				}
 			} else {
 				update_post_meta(
 					$post_id,
 					$key,
-					$this->replace_refs_in_meta_value( $values )
+					$this->replace_refs_in_meta_value( $values, $key )
 				);
 			}
 		}
@@ -394,14 +394,14 @@ class REST_API extends WP_REST_Controller {
 					add_term_meta(
 						$term_id,
 						$key,
-						$this->replace_refs_in_meta_value( $value )
+						$this->replace_refs_in_meta_value( $value, $key )
 					);
 				}
 			} else {
 				update_term_meta(
 					$term_id,
 					$key,
-					$this->replace_refs_in_meta_value( $values )
+					$this->replace_refs_in_meta_value( $values, $key )
 				);
 			}
 		}
@@ -1625,7 +1625,10 @@ class REST_API extends WP_REST_Controller {
 	 */
 	protected function replace_refs_in_post_content( WP_Post $post ) {
 		// Check the post content to see if any refs need replacement.
-		$updated_content = $this->replace_refs_in_string( $post->post_content );
+		$updated_content = $this->replace_refs_in_string(
+			$post->post_content,
+			'post_content'
+		);
 
 		if (
 			! empty( $updated_content )
@@ -1643,12 +1646,13 @@ class REST_API extends WP_REST_Controller {
 	/**
 	 * Replace refs in a meta value.
 	 *
-	 * @param string $value Meta value.
+	 * @param string $value    Meta value.
+	 * @param string $meta_key Meta key.
 	 * @return string
 	 */
-	protected function replace_refs_in_meta_value( string $value ): string {
+	protected function replace_refs_in_meta_value( string $value, string $meta_key ): string {
 		// Check the post content to see if any refs need replacement.
-		$updated_value = $this->replace_refs_in_string( $value );
+		$updated_value = $this->replace_refs_in_string( $value, $meta_key );
 
 		if ( ! empty( $updated_value ) && $updated_value !== $value ) {
 			return $updated_value;
@@ -1666,18 +1670,19 @@ class REST_API extends WP_REST_Controller {
 	 *
 	 * <field> may be one of id or url.
 	 *
-	 * @param string $value Value to search for refs.
+	 * @param string $value   Value to search for refs.
+	 * @param string $context Context in which this replacement is happening.
 	 * @return string|null String with replaced content on success, null on
 	 *                     failure or if nothing was replaced.
 	 */
-	protected function replace_refs_in_string( string $value ) {
+	protected function replace_refs_in_string( string $value, string $context ) {
 		if (
 			! empty( $this->created_refs )
 			&& preg_match( '/\{\{ .+? \}\}/', $value )
 		) {
 			return preg_replace_callback(
 				'/\{\{ (.*?) \}\}/',
-				function ( $matches ) {
+				function ( $matches ) use ( $context ) {
 					$data = explode( ' | ', $matches[1] );
 
 					// Ensure at least two segments: source id and what to do with it.
@@ -1714,11 +1719,16 @@ class REST_API extends WP_REST_Controller {
 							 * Filter the image size used when running image
 							 * URL replacements.
 							 *
-							 * @param string $size Image size.
+							 * @param string $size    Image size.
+							 * @param string $context Context in which the image
+							 *                        is being used. Either
+							 *                        'post_content' or a meta
+							 *                        key.
 							 */
 							$size = apply_filters(
 								'sst_image_size_for_replacement',
-								$size
+								$size,
+								$context
 							);
 
 							$result = wp_get_attachment_image_url(
