@@ -520,25 +520,6 @@ class REST_API extends WP_REST_Controller {
 	}
 
 	/**
-	 * Handles a side-loaded file in the same way as an uploaded file is handled
-	 * by media_handle_upload().
-	 *
-	 * @param array  $file_array Array similar to a `$_FILES` upload array.
-	 * @param int    $post_id    The post ID the media is associated with.
-	 * @param string $desc       Optional. Description of the side-loaded file. Default null.
-	 * @param array  $post_data  Optional. Post data to override. Default empty array.
-	 * @return int|object The ID of the attachment or a WP_Error on failure.
-	 */
-	public static function media_handle_sideload( $file_array, $post_id, $desc = null, $post_data = [] ) {
-		if ( ! function_exists( 'media_sideload_image' ) ) {
-			require_once ABSPATH . 'wp-admin/includes/file.php';
-			require_once ABSPATH . 'wp-admin/includes/image.php';
-			require_once ABSPATH . 'wp-admin/includes/media.php';
-		}
-		return media_handle_sideload( $file_array, $post_id, $desc, $post_data );
-	}
-
-	/**
 	 * Download file to a given post ID for a given reference.
 	 *
 	 * @param int   $post_id   Post ID to which to attach the file.
