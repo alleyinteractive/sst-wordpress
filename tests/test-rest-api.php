@@ -1,6 +1,8 @@
 <?php
 /**
- * Class SampleTest
+ * Class Test_REST_API
+ *
+ * phpcs:disable
  *
  * @package SST
  */
@@ -187,7 +189,7 @@ class Test_REST_API extends \WP_UnitTestCase {
 		$this->create_post_request_with_defaults();
 	}
 
-	public function test_post_with_attachments() {
+	public function test_post_with_attachment_image() {
 		$url = 'https://wpthemetestdata.files.wordpress.com/2008/06/canola2.jpg';
 
 		$data = $this->create_post_request_with_defaults(
@@ -204,6 +206,50 @@ class Test_REST_API extends \WP_UnitTestCase {
 
 		$this->assertFalse( empty( $data['posts'][1]['sst_source_id'] ) );
 		$this->assertSame( $url, $data['posts'][1]['sst_source_id'] );
+	}
+
+	public function test_post_with_attachment_pdf() {
+		$url = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+
+		$data = $this->create_post_request_with_defaults(
+			[
+				'references' => [
+					[
+						'type'          => 'post',
+						'subtype'       => 'attachment',
+						'args'          => compact( 'url' ),
+					],
+				],
+			]
+		);
+
+		$this->assertFalse( empty( $data['posts'][1]['sst_source_id'] ) );
+		$this->assertSame( $url, $data['posts'][1]['sst_source_id'] );
+	}
+
+	public function test_post_with_invalid_attachment() {
+		$url = 'http://localhost/invalid.php';
+
+		$params = $this->set_post_data(
+			[
+				'references' => [
+					[
+						'type'          => 'post',
+						'subtype'       => 'attachment',
+						'args'          => compact( 'url' ),
+					],
+				],
+			]
+		);
+		$response = $this->create_post_request( $params );
+
+		// Confirm that the post still created.
+		$this->assertEquals( 201, $response->get_status() );
+		$data = $response->get_data();
+		$this->assertTrue( empty( $data['posts'][1]['sst_source_id'] ) );
+		$this->assertNotEmpty( $data['errors'] );
+		$this->assertContains( 'references[0]', $data['errors'][0] );
+		$this->assertContains( 'invalid.php', $data['errors'][0] );
 	}
 
 	public function test_attachment_alt_text_inherted_from_desc() {
@@ -336,6 +382,7 @@ class Test_REST_API extends \WP_UnitTestCase {
 		$this->assertEquals( 400, $response->get_status() );
 		$data = $response->get_data();
 		$this->assertSame( 'rest_invalid_param', $data['code'] );
+		$this->assertContains( 'references[0]', $data['data']['params']['references'] );
 	}
 
 	/**
