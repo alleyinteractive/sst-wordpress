@@ -1685,23 +1685,52 @@ class REST_API extends WP_REST_Controller {
 						return '';
 					}
 
+					$guid = array_shift( $data );
+
 					// Validate there is something to replace with.
-					if ( empty( $this->created_refs[ $data[0] ]['id'] ) ) {
+					if ( empty( $this->created_refs[ $guid ]['id'] ) ) {
 						return '';
 					}
 
+					$ref_id = $this->created_refs[ $guid ]['id'];
+
+					$result  = '';
+					$to_type = array_shift( $data );
+
 					// Run the replacement!
-					if ( 'to id' === $data[1] ) {
-						return $this->created_refs[ $data[0] ]['id'];
-					}
-					if ( 'to url' === $data[1] ) {
-						return wp_get_attachment_image_url(
-							$this->created_refs[ $data[0] ]['id'],
-							'full'
-						);
+					if ( 'to id' === $to_type ) {
+						$result = $ref_id;
+					} elseif ( 'to url' === $to_type ) {
+						if ( wp_attachment_is_image( $ref_id ) ) {
+							$size = 'full';
+							if (
+								! empty( $data[0] )
+								&& 'size ' === substr( $data[0], 0, 5 )
+							) {
+								$size = substr( array_shift( $data ), 5 );
+							}
+
+							/**
+							 * Filter the image size used when running image
+							 * URL replacements.
+							 *
+							 * @param string $size Image size.
+							 */
+							$size = apply_filters(
+								'sst_image_size_for_replacement',
+								$size
+							);
+
+							$result = wp_get_attachment_image_url(
+								$ref_id,
+								$size
+							);
+						} else {
+							$result = wp_get_attachment_url( $ref_id );
+						}
 					}
 
-					return '';
+					return $result;
 				},
 				$value
 			);
