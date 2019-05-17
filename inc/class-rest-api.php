@@ -94,11 +94,14 @@ class REST_API extends WP_REST_Controller {
 	 * REST requests.
 	 */
 	public function add_sst_request_filters() {
+		// Allow requests to set the modified date.
 		foreach ( get_post_types( [ 'show_in_rest' => true ] ) as $post_type ) {
 			add_filter( "rest_pre_insert_{$post_type}", [ $this, 'set_modified' ], 10, 2 );
 		}
 		add_filter( 'wp_insert_post_data', [ $this, 'prevent_updates_from_overwriting_modified_date' ], 5, 2 );
 		add_filter( 'wp_insert_post_data', [ $this, 'set_modified_for_real' ], 10, 2 );
+
+		// Address bug in core with long attachment filenames.
 		add_filter( 'wp_insert_attachment_data', [ $this, 'filter_attachment_guid' ] );
 	}
 
@@ -432,50 +435,138 @@ class REST_API extends WP_REST_Controller {
 	}
 
 	/**
-	 * Download image to a given post ID for a given reference.
+	 * Downloads a file from the specified URL and attaches it to a post.
 	 *
-	 * @param int   $post_id   Post ID to which to attach the images.
+	 * This method is a clone of media_sideload_image without the image
+	 * extension validation. In place of that, this uses `wp_check_filetype()`.
+	 * To further improve security, this also disables `unfiltered_upload`, so
+	 * even for super admins, the downloaded file will be validated against the
+	 * allowed types in this WordPress install.
+	 *
+	 * @param string $file    The URL of the file to download.
+	 * @param int    $post_id The post ID the media is to be associated with.
+	 * @param string $desc    Optional. Description of the file.
+	 * @return int|WP_Error Attachment ID on success, WP_Error otherwise.
+	 */
+	public static function media_sideload_file( $file, $post_id, $desc = null ) {
+		if ( ! function_exists( 'media_handle_sideload' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+			require_once ABSPATH . 'wp-admin/includes/image.php';
+			require_once ABSPATH . 'wp-admin/includes/media.php';
+		}
+
+		if ( ! empty( $file ) ) {
+			// Only let this method download files that a non-admin can upload.
+			add_filter( 'user_has_cap', [ __CLASS__, 'disable_unfiltered_upload' ] );
+
+			// Pull out the filename from the URL.
+			$parsed_url = wp_parse_url( $file );
+			if ( empty( $parsed_url['path'] ) ) {
+				return new WP_Error( 'invalid-url', __( 'Invalid attachment URL to download.', 'sst' ) );
+			}
+
+			// Run an early check against allowed file types.
+			$file_data = wp_check_filetype( $parsed_url['path'] );
+			if ( ! $file_data['ext'] && ! $file_data['type'] ) {
+				return new WP_Error(
+					'invalid-file-type',
+					sprintf(
+						/* translators: %s: filename */
+						__( 'Attachment file type is not allowed for `%s`.', 'sst' ),
+						wp_basename( $parsed_url['path'] )
+					)
+				);
+			}
+
+			$file_array         = [];
+			$file_array['name'] = wp_basename( $parsed_url['path'] );
+
+			// Download file to temp location.
+			$file_array['tmp_name'] = download_url( $file );
+
+			// Resume normal functioning of `unfiltered_upload`.
+			remove_filter( 'user_has_cap', [ __CLASS__, 'disable_unfiltered_upload' ] );
+
+			// If error storing temporarily, return the error.
+			if ( is_wp_error( $file_array['tmp_name'] ) ) {
+				return $file_array['tmp_name'];
+			}
+
+			// Do the validation and storage stuff.
+			$id = media_handle_sideload( $file_array, $post_id, $desc );
+
+			// If error storing permanently, unlink.
+			if ( is_wp_error( $id ) ) {
+				if ( file_exists( $file_array['tmp_name'] ) ) {
+					// Unlink may throw a warning beyond our control, silence!
+					// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+					@unlink( $file_array['tmp_name'] );
+				}
+			}
+
+			return $id;
+		}
+	}
+
+	/**
+	 * Dynamically filter a user's capabilities to remove unfiltered_upload.
+	 *
+	 * @param array $allcaps An array of all the user's capabilities.
+	 * @return array
+	 */
+	public static function disable_unfiltered_upload( $allcaps ) {
+		$allcaps['unfiltered_upload'] = false;
+		return $allcaps;
+	}
+
+	/**
+	 * Download file to a given post ID for a given reference.
+	 *
+	 * @param int   $post_id   Post ID to which to attach the file.
 	 * @param array $reference References array entry.
 	 * @return WP_Error|WP_Post Post object on success, WP_Error on failure.
 	 */
-	protected function download_image( int $post_id, array $reference ) {
+	protected function download_file( int $post_id, array $reference ) {
 		$source    = $reference['args'];
 		$source_id = $reference['sst_source_id'];
 
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
 
-		// Download the image to WordPress.
-		$image_id = $this->media_sideload_image(
+		// Download the file to WordPress.
+		$attachment_id = $this->media_sideload_file(
 			$source['url'],
 			$post_id,
-			! empty( $source['title'] ) ? $source['title'] : null,
-			'id'
+			! empty( $source['title'] ) ? $source['title'] : null
 		);
 
-		if ( is_wp_error( $image_id ) ) {
-			return $image_id;
+		if ( is_wp_error( $attachment_id ) ) {
+			return $attachment_id;
 		}
-		$image_id = intval( $image_id );
 
-		// Save meta for the image.
+		// If this is an image, make some special accommodations.
 		if (
 			empty( $source['meta']['_wp_attachment_image_alt'] )
 			&& ! empty( $source['title'] )
 		) {
-			// If the alt text is missing, set it to the title.
-			$source['meta']['_wp_attachment_image_alt'] = $source['title'];
+			$mime = get_post_mime_type( $attachment_id );
+			if ( 'image/' === substr( $mime, 0, 6 ) ) {
+				// If the alt text is missing, set it to the title.
+				$source['meta']['_wp_attachment_image_alt'] = $source['title'];
+			}
 		}
-		$this->save_post_meta( $image_id, $source );
 
-		$post = get_post( $image_id );
+		// Save meta for the attachment.
+		$this->save_post_meta( $attachment_id, $source );
+
+		$post = get_post( $attachment_id );
 
 		// Add the object to the response.
 		$this->add_object_to_response( $post );
 
 		// Store the created ref for use later.
 		$this->created_refs[ $source_id ] = [
-			'id'     => $image_id,
+			'id'     => $attachment_id,
 			'object' => $post,
 		];
 
@@ -631,7 +722,7 @@ class REST_API extends WP_REST_Controller {
 			return;
 		}
 
-		foreach ( $request['references'] as $reference ) {
+		foreach ( $request['references'] as $ref_index => $reference ) {
 			/**
 			 * Allow external code to short-circuit ref creation.
 			 *
@@ -672,7 +763,7 @@ class REST_API extends WP_REST_Controller {
 				'post' === $reference['type']
 				&& 'attachment' === $reference['subtype']
 			) {
-				$result = $this->download_image( $post_id, $reference );
+				$result = $this->download_file( $post_id, $reference );
 			} elseif ( 'post' === $reference['type'] ) {
 				$result = $this->create_ref_post( $reference );
 			} elseif ( 'term' === $reference['type'] ) {
@@ -680,7 +771,11 @@ class REST_API extends WP_REST_Controller {
 			} else {
 				$result = new WP_Error(
 					'invalid-ref',
-					__( 'Invalid ref', 'sst' )
+					sprintf(
+						/* translators: %s: reference type */
+						__( 'Invalid reference type `%s`', 'sst' ),
+						$reference['type']
+					)
 				);
 			}
 
@@ -705,7 +800,17 @@ class REST_API extends WP_REST_Controller {
 			);
 
 			if ( is_wp_error( $result ) ) {
-				$this->add_nonfatal_error( $result );
+				$this->add_nonfatal_error(
+					new WP_Error(
+						'ref-failed',
+						sprintf(
+							/* translators: 1: reference index, 2: error message */
+							__( 'Error creating `references[%1$d]`: %2$s', 'sst' ),
+							$ref_index,
+							$result->get_error_message()
+						)
+					)
+				);
 				continue;
 			}
 
@@ -1415,7 +1520,7 @@ class REST_API extends WP_REST_Controller {
 			return $schema_validation;
 		}
 
-		foreach ( $values as $ref ) {
+		foreach ( $values as $index => $ref ) {
 			// Ensure type and subtype are set.
 			if (
 				empty( $ref['type'] )
@@ -1423,7 +1528,11 @@ class REST_API extends WP_REST_Controller {
 			) {
 				return new WP_Error(
 					'sst-invalid-reference',
-					__( 'Invalid reference; type, subtype, and sst_source_id are required properties.', 'sst' )
+					sprintf(
+						/* translators: %d: reference index */
+						__( 'Invalid reference at `references[%d]`; type, subtype, and sst_source_id are required properties.', 'sst' ),
+						$index
+					)
 				);
 			}
 
@@ -1435,7 +1544,11 @@ class REST_API extends WP_REST_Controller {
 			) {
 				return new WP_Error(
 					'sst-invalid-reference',
-					__( 'Invalid reference; sst_source_id is a required property for non-attachment posts.', 'sst' )
+					sprintf(
+						/* translators: %d: reference index */
+						__( 'Missing required property `references[%d].sst_source_id` for non-attachment post ref.', 'sst' ),
+						$index
+					)
 				);
 			}
 
@@ -1447,7 +1560,11 @@ class REST_API extends WP_REST_Controller {
 			) {
 				return new WP_Error(
 					'attachment-missing-url',
-					__( 'Reference attachment missing args.url', 'sst' )
+					sprintf(
+						/* translators: %d: reference index */
+						__( 'Missing required property `references[%d].args.url`', 'sst' ),
+						$index
+					)
 				);
 			}
 
@@ -1458,7 +1575,11 @@ class REST_API extends WP_REST_Controller {
 			) {
 				return new WP_Error(
 					'term-missing-title',
-					__( 'Reference term missing args.title', 'sst' )
+					sprintf(
+						/* translators: %d: reference index */
+						__( 'Missing required property `references[%d].args.title` for reference term', 'sst' ),
+						$index
+					)
 				);
 			}
 		}
