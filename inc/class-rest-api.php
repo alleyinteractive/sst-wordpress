@@ -460,7 +460,7 @@ class REST_API extends WP_REST_Controller {
 			add_filter( 'user_has_cap', [ __CLASS__, 'disable_unfiltered_upload' ] );
 
 			// Pull out the filename from the URL.
-			$parsed_url = parse_url( $file );
+			$parsed_url = wp_parse_url( $file );
 			if ( empty( $parsed_url['path'] ) ) {
 				return new WP_Error( 'invalid-url', __( 'Invalid attachment URL to download.', 'sst' ) );
 			}
