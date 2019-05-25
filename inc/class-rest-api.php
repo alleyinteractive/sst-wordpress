@@ -336,7 +336,7 @@ class REST_API extends WP_REST_Controller {
 
 		foreach ( $meta as $key => $values ) {
 			// Discern between single values and multiple.
-			if ( is_array( $values ) ) {
+			if ( is_array( $values ) && ! apply_filters( 'sst_validate_post_meta', $key, $values ) ) {
 				delete_post_meta( $post_id, $key );
 				foreach ( $values as $value ) {
 					add_post_meta(
@@ -345,6 +345,18 @@ class REST_API extends WP_REST_Controller {
 						$this->replace_refs_in_meta_value( $value, $key )
 					);
 				}
+			} elseif ( is_array( $values ) && apply_filters( 'sst_validate_post_meta', $key, $values ) ) {
+				$validate = apply_filters( 'sst_validate_post_meta', $key, $values );
+				update_post_meta(
+					$post_id,
+					$key,
+					array_map(
+						function( $value ) use ( $key ) {
+							return $this->replace_refs_in_meta_value( $value, $key );
+						},
+						$values
+					)
+				);
 			} else {
 				update_post_meta(
 					$post_id,
@@ -1457,6 +1469,9 @@ class REST_API extends WP_REST_Controller {
 					sprintf( __( 'Invalid meta key %1$s. Meta keys must be strings.', 'sst' ), $meta_key )
 				);
 			}
+			if ( apply_filters( 'sst_validate_post_meta', $meta_key, $meta_value ) ) {
+				return true;
+			}
 			if ( ! is_scalar( $meta_value ) && ! wp_is_numeric_array( $meta_value ) ) {
 				return new WP_Error(
 					'sst-invalid-meta-value',
@@ -1493,12 +1508,16 @@ class REST_API extends WP_REST_Controller {
 		$values = rest_parse_request_arg( $values, $request, $param );
 
 		// Run a deeper sanitization of the formats of individual meta.
-		foreach ( $values as &$meta_value ) {
+		foreach ( $values as $meta_key => &$meta_value ) {
 			if ( is_scalar( $meta_value ) ) {
 				$meta_value = strval( $meta_value );
 			} else {
-				foreach ( $meta_value as &$individual_value ) {
-					$individual_value = strval( $individual_value );
+				if ( apply_filters( 'sst_validate_post_meta', $meta_key, $meta_value ) ) {
+					$individual_value = serialize( $meta_value );
+				} else {
+					foreach ( $meta_value as &$individual_value ) {
+						$individual_value = strval( $individual_value );
+					}
 				}
 			}
 		}
@@ -1650,7 +1669,7 @@ class REST_API extends WP_REST_Controller {
 	 * @param string $meta_key Meta key.
 	 * @return string
 	 */
-	protected function replace_refs_in_meta_value( string $value, string $meta_key ): string {
+	protected function replace_refs_in_meta_value( $value, string $meta_key ): string {
 		// Check the post content to see if any refs need replacement.
 		$updated_value = $this->replace_refs_in_string( $value, $meta_key );
 
