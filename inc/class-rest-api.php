@@ -656,6 +656,9 @@ class REST_API extends WP_REST_Controller {
 			return $this->created_refs[ $source_id ]['object'];
 		}
 
+		// Don't create the term if we say it exists.
+		do_action( 'sst_validate_term', $reference, $post_id, $this );
+
 		// Allow for setting the parent and the slug.
 		$args = [];
 		if ( ! empty( $source['parent'] ) ) {
