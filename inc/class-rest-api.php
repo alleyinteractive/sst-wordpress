@@ -1669,7 +1669,7 @@ class REST_API extends WP_REST_Controller {
 	 * @param string $meta_key Meta key.
 	 * @return string
 	 */
-	protected function replace_refs_in_meta_value( $value, string $meta_key ): string {
+	protected function replace_refs_in_meta_value( string $value, string $meta_key ): string {
 		// Check the post content to see if any refs need replacement.
 		$updated_value = $this->replace_refs_in_string( $value, $meta_key );
 
