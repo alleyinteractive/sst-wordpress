@@ -104,8 +104,9 @@ class REST_API extends WP_REST_Controller {
 		// Address bug in core with long attachment filenames.
 		add_filter( 'wp_insert_attachment_data', [ $this, 'filter_attachment_guid' ] );
 
-		// Tell Jetpack to not async publishing actions.
+		// Don't schedule async publishing actions.
 		add_filter( 'wpcom_async_transition_post_status_should_offload', '__return_false' );
+		add_filter( 'wpcom_async_transition_post_status_schedule_async', '__return_false' );
 
 		// Disable pings and stuff.
 		remove_action( 'publish_post', '_publish_post_hook', 5 );
