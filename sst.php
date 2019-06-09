@@ -12,6 +12,8 @@
  * @package SST
  */
 
+// phpcs:disable WordPressVIPMinimum.Files.IncludingFile.UsingCustomConstant,WordPressVIPMinimum.Constants.ConstantString.NotCheckingConstantName
+
 namespace SST;
 
 define( __NAMESPACE__ . '\PATH', __DIR__ );

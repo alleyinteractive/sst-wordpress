@@ -506,7 +506,7 @@ class REST_API extends WP_REST_Controller {
 			if ( is_wp_error( $id ) ) {
 				if ( file_exists( $file_array['tmp_name'] ) ) {
 					// Unlink may throw a warning beyond our control, silence!
-					// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+					// phpcs:ignore
 					@unlink( $file_array['tmp_name'] );
 				}
 			}
@@ -1700,10 +1700,12 @@ class REST_API extends WP_REST_Controller {
 					$guid = array_shift( $data );
 
 					// Validate there is something to replace with.
+					// phpcs:ignore WordPressVIPMinimum.Variables.VariableAnalysis.UndefinedVariable
 					if ( empty( $this->created_refs[ $guid ]['id'] ) ) {
 						return '';
 					}
 
+					// phpcs:ignore WordPressVIPMinimum.Variables.VariableAnalysis.UndefinedVariable
 					$ref_id = $this->created_refs[ $guid ]['id'];
 
 					$result  = '';

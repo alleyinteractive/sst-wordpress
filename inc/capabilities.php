@@ -5,6 +5,7 @@
  * @package SST
  */
 
+/* phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedNamespaceFound */
 namespace SST;
 
 add_filter( 'user_has_cap', __NAMESPACE__ . '\custom_capabilities' );
