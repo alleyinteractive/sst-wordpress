@@ -506,7 +506,7 @@ class REST_API extends WP_REST_Controller {
 			if ( is_wp_error( $id ) ) {
 				if ( file_exists( $file_array['tmp_name'] ) ) {
 					// Unlink may throw a warning beyond our control, silence!
-					// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+					// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged,WordPressVIPMinimum.Functions.RestrictedFunctions.file_ops_unlink
 					@unlink( $file_array['tmp_name'] );
 				}
 			}
