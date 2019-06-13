@@ -337,7 +337,14 @@ class REST_API extends WP_REST_Controller {
 			$request
 		);
 
-		if ( empty( $meta ) ) {
+		$nested_meta = apply_filters(
+			'sst_pre_save_post_meta',
+			$request['nestedMeta'] ?? [],
+			$post_id,
+			$request
+		);
+
+		if ( empty( $meta ) && empty( $nested_meta ) ) {
 			return false;
 		}
 
@@ -358,6 +365,12 @@ class REST_API extends WP_REST_Controller {
 					$key,
 					$this->replace_refs_in_meta_value( $values, $key )
 				);
+			}
+		}
+
+		if ( ! empty( $nested_meta ) ) {
+			foreach ( array_keys( $nested_meta ) as $key ) {
+				update_post_meta( $post_id, $key, $nested_meta[ $key ] );
 			}
 		}
 
