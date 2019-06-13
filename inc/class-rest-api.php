@@ -348,29 +348,33 @@ class REST_API extends WP_REST_Controller {
 			return false;
 		}
 
-		foreach ( $meta as $key => $values ) {
-			// Discern between single values and multiple.
-			if ( is_array( $values ) ) {
-				delete_post_meta( $post_id, $key );
-				foreach ( $values as $value ) {
-					add_post_meta(
+		if ( ! empty( $meta ) ) {
+			foreach ( $meta as $key => $values ) {
+				// Discern between single values and multiple.
+				if ( is_array( $values ) ) {
+					delete_post_meta( $post_id, $key );
+					foreach ( $values as $value ) {
+						add_post_meta(
+							$post_id,
+							$key,
+							$this->replace_refs_in_meta_value( $value, $key )
+						);
+					}
+				} else {
+					update_post_meta(
 						$post_id,
 						$key,
-						$this->replace_refs_in_meta_value( $value, $key )
+						$this->replace_refs_in_meta_value( $values, $key )
 					);
 				}
-			} else {
-				update_post_meta(
-					$post_id,
-					$key,
-					$this->replace_refs_in_meta_value( $values, $key )
-				);
 			}
 		}
 
 		if ( ! empty( $nested_meta ) ) {
-			foreach ( array_keys( $nested_meta ) as $key ) {
-				update_post_meta( $post_id, $key, $nested_meta[ $key ] );
+			if ( ! empty( $nested_meta ) ) {
+				foreach ( array_keys( $nested_meta ) as $key ) {
+					update_post_meta( $post_id, $key, $nested_meta[ $key ] );
+				}
 			}
 		}
 
