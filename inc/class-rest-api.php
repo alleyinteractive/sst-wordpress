@@ -338,7 +338,7 @@ class REST_API extends WP_REST_Controller {
 		);
 
 		$nested_meta = apply_filters(
-			'sst_pre_save_post_meta',
+			'sst_pre_save_post_meta_nested',
 			$request['nestedMeta'] ?? [],
 			$post_id,
 			$request
@@ -405,31 +405,50 @@ class REST_API extends WP_REST_Controller {
 			$term_id,
 			$request
 		);
+		$nested_meta = apply_filters(
+			'sst_pre_save_term_meta_nested',
+			$request['nestedMeta'] ?? [],
+			$post_id,
+			$request
+		);
 
-		if ( empty( $meta ) ) {
+		if ( empty( $meta ) && empty( $nested_meta ) ) {
 			return false;
 		}
 
-		foreach ( $meta as $key => $values ) {
-			// Discern between single values and multiple.
-			if ( is_array( $values ) ) {
-				delete_term_meta( $term_id, $key );
-				foreach ( $values as $value ) {
-					add_term_meta(
+		if ( ! empty( $meta ) ) {
+			foreach ( $meta as $key => $values ) {
+				// Discern between single values and multiple.
+				if ( is_array( $values ) ) {
+					delete_term_meta( $term_id, $key );
+					foreach ( $values as $value ) {
+						add_term_meta(
+							$term_id,
+							$key,
+							$this->replace_refs_in_meta_value( $value, $key )
+						);
+					}
+				} else {
+					update_term_meta(
 						$term_id,
 						$key,
-						$this->replace_refs_in_meta_value( $value, $key )
+						$this->replace_refs_in_meta_value( $values, $key )
 					);
 				}
-			} else {
-				update_term_meta(
-					$term_id,
-					$key,
-					$this->replace_refs_in_meta_value( $values, $key )
-				);
 			}
 		}
 
+		if ( ! empty( $nested_meta ) ) {
+			if ( ! empty( $nested_meta ) ) {
+				foreach ( array_keys( $nested_meta ) as $key ) {
+					update_term_meta(
+						$term_id,
+						$key,
+						$nested_meta[ $key ]
+					);
+				}
+			}
+		}
 		return true;
 	}
 
