@@ -719,6 +719,9 @@ class REST_API extends WP_REST_Controller {
 				$args['parent'] = $source['parent'];
 			}
 		}
+		if ( ! empty( $source['description'] ) ) {
+			$args['description'] = $source['description'];
+		}
 		if ( ! empty( $source['slug'] ) ) {
 			$args['slug'] = $source['slug'];
 		}
