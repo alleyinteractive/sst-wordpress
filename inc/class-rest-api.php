@@ -408,7 +408,7 @@ class REST_API extends WP_REST_Controller {
 		$nested_meta = apply_filters(
 			'sst_pre_save_term_meta_nested',
 			$request['nestedMeta'] ?? [],
-			$post_id,
+			$term_id,
 			$request
 		);
 
