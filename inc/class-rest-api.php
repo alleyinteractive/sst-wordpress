@@ -371,10 +371,8 @@ class REST_API extends WP_REST_Controller {
 		}
 
 		if ( ! empty( $nested_meta ) ) {
-			if ( ! empty( $nested_meta ) ) {
-				foreach ( array_keys( $nested_meta ) as $key ) {
-					update_post_meta( $post_id, $key, $nested_meta[ $key ] );
-				}
+			foreach ( array_keys( $nested_meta ) as $key ) {
+				update_post_meta( $post_id, $key, $nested_meta[ $key ] );
 			}
 		}
 
@@ -439,14 +437,12 @@ class REST_API extends WP_REST_Controller {
 		}
 
 		if ( ! empty( $nested_meta ) ) {
-			if ( ! empty( $nested_meta ) ) {
-				foreach ( array_keys( $nested_meta ) as $key ) {
-					update_term_meta(
-						$term_id,
-						$key,
-						$nested_meta[ $key ]
-					);
-				}
+			foreach ( array_keys( $nested_meta ) as $key ) {
+				update_term_meta(
+					$term_id,
+					$key,
+					$nested_meta[ $key ]
+				);
 			}
 		}
 		return true;
