@@ -111,6 +111,12 @@ class REST_API extends WP_REST_Controller {
 		// Don't let Jetpack try to send sync requests during SST requests.
 		add_filter( 'jetpack_sync_sender_should_load', '__return_false' );
 
+		// Disable Jetpack Publicize during SST requests.
+		add_filter( 'wpas_submit_post?', '__return_false' );
+
+		// Disable pixel tracking of uploads.
+		remove_filter( 'wp_handle_upload', '\Automattic\VIP\Stats\handle_file_upload', 9999 );
+
 		// Disable pings and stuff.
 		remove_action( 'publish_post', '_publish_post_hook', 5 );
 	}
