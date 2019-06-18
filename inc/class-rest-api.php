@@ -108,6 +108,9 @@ class REST_API extends WP_REST_Controller {
 		add_filter( 'wpcom_async_transition_post_status_should_offload', '__return_false' );
 		add_filter( 'wpcom_async_transition_post_status_schedule_async', '__return_false' );
 
+		// Don't let Jetpack try to send sync requests during SST requests.
+		add_filter( 'jetpack_sync_sender_should_load', '__return_false' );
+
 		// Disable pings and stuff.
 		remove_action( 'publish_post', '_publish_post_hook', 5 );
 	}
