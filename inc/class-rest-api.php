@@ -108,6 +108,15 @@ class REST_API extends WP_REST_Controller {
 		add_filter( 'wpcom_async_transition_post_status_should_offload', '__return_false' );
 		add_filter( 'wpcom_async_transition_post_status_schedule_async', '__return_false' );
 
+		// Don't let Jetpack try to send sync requests during SST requests.
+		add_filter( 'jetpack_sync_sender_should_load', '__return_false' );
+
+		// Disable Jetpack Publicize during SST requests.
+		add_filter( 'wpas_submit_post?', '__return_false' );
+
+		// Disable pixel tracking of uploads.
+		remove_filter( 'wp_handle_upload', '\Automattic\VIP\Stats\handle_file_upload', 9999 );
+
 		// Disable pings and stuff.
 		remove_action( 'publish_post', '_publish_post_hook', 5 );
 	}
@@ -671,8 +680,9 @@ class REST_API extends WP_REST_Controller {
 		$source['meta']['sst_source_id'] = $source_id;
 
 		$post_arr = [
-			'post_title' => $source['title'] ?? $source_id,
-			'post_type'  => $reference['subtype'],
+			'post_title'  => $source['title'] ?? $source_id,
+			'post_type'   => $reference['subtype'],
+			'post_status' => $reference['post_status'] ?? 'draft',
 		];
 
 		$post_id = wp_insert_post( $post_arr, true );
