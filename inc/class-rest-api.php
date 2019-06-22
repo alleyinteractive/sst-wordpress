@@ -313,6 +313,44 @@ class REST_API extends WP_REST_Controller {
 	}
 
 	/**
+	 * Replace refs recursively.
+	 *
+	 * @param array  $nested_meta Array to be replaced.
+	 * @param string $path Path being replaced.
+	 * @return array Replaced nested meta.
+	 */
+	protected function recursive_refs_replace( $nested_meta, $path = null ) {
+		$replaced_nested_meta = [];
+		foreach ( $nested_meta as $key => $value ) {
+			$new_path = $path ? "{$path}.{$key}" : $key;
+			if ( is_array( $value ) ) {
+				$output[ $key ] = $this->recursive_refs_replace(
+					$value,
+					$new_path
+				);
+			} elseif ( is_string( $value ) ) {
+				$output[ $key ] = $this->replace_refs_in_meta_value(
+					$value,
+					$new_path
+				);
+			} else {
+				$output [ $key ] = $value;
+			}
+		}
+		return $replaced_nested_meta;
+	}
+
+	/**
+	 * Replace references in nested meta.
+	 *
+	 * @param array $nested_meta Nested meta for replacement.
+	 * @return array Replaced nested meta.
+	 */
+	protected function replace_refs_in_nested_meta( array $nested_meta ) {
+		return $this->recursive_refs_replace( $nested_meta );
+	}
+
+	/**
 	 * Save an array of post meta to a given post id.
 	 *
 	 * @param int                   $post_id Post ID.
@@ -371,6 +409,7 @@ class REST_API extends WP_REST_Controller {
 		}
 
 		if ( ! empty( $nested_meta ) ) {
+			$nested_meta = $this->replace_refs_in_nested_meta( $nested_meta );
 			foreach ( array_keys( $nested_meta ) as $key ) {
 				update_post_meta( $post_id, $key, $nested_meta[ $key ] );
 			}
@@ -437,6 +476,7 @@ class REST_API extends WP_REST_Controller {
 		}
 
 		if ( ! empty( $nested_meta ) ) {
+			$nested_meta = $this->replace_refs_in_nested_meta( $nested_meta );
 			foreach ( array_keys( $nested_meta ) as $key ) {
 				update_term_meta(
 					$term_id,
