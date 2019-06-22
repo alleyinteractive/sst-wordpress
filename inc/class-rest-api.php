@@ -608,8 +608,9 @@ class REST_API extends WP_REST_Controller {
 		$source['meta']['sst_source_id'] = $source_id;
 
 		$post_arr = [
-			'post_title' => $source['title'] ?? $source_id,
-			'post_type'  => $reference['subtype'],
+			'post_title'  => $source['title'] ?? $source_id,
+			'post_type'   => $reference['subtype'],
+			'post_status' => $reference['post_status'] ?? 'draft',
 		];
 
 		$post_id = wp_insert_post( $post_arr, true );
