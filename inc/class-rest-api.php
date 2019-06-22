@@ -319,7 +319,7 @@ class REST_API extends WP_REST_Controller {
 	 * @param string $path Path being replaced.
 	 * @return array Replaced nested meta.
 	 */
-	protected function recursive_refs_replace( $nested_meta, $path = null ) {
+	protected function recursive_refs_replace( array $nested_meta, string $path ) {
 		$replaced_nested_meta = [];
 		foreach ( $nested_meta as $key => $value ) {
 			$new_path = $path ? "{$path}.{$key}" : $key;
@@ -347,7 +347,7 @@ class REST_API extends WP_REST_Controller {
 	 * @return array Replaced nested meta.
 	 */
 	protected function replace_refs_in_nested_meta( array $nested_meta ) {
-		return $this->recursive_refs_replace( $nested_meta );
+		return $this->recursive_refs_replace( $nested_meta, '' );
 	}
 
 	/**
