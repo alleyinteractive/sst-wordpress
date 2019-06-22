@@ -324,17 +324,17 @@ class REST_API extends WP_REST_Controller {
 		foreach ( $nested_meta as $key => $value ) {
 			$new_path = $path ? "{$path}.{$key}" : $key;
 			if ( is_array( $value ) ) {
-				$output[ $key ] = $this->recursive_refs_replace(
+				$replaced_nested_meta[ $key ] = $this->recursive_refs_replace(
 					$value,
 					$new_path
 				);
 			} elseif ( is_string( $value ) ) {
-				$output[ $key ] = $this->replace_refs_in_meta_value(
+				$replaced_nested_meta[ $key ] = $this->replace_refs_in_meta_value(
 					$value,
 					$new_path
 				);
 			} else {
-				$output[ $key ] = $value;
+				$replaced_nested_meta[ $key ] = $value;
 			}
 		}
 		return $replaced_nested_meta;
