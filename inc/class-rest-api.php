@@ -334,7 +334,7 @@ class REST_API extends WP_REST_Controller {
 					$new_path
 				);
 			} else {
-				$output [ $key ] = $value;
+				$output[ $key ] = $value;
 			}
 		}
 		return $replaced_nested_meta;
