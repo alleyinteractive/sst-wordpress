@@ -1728,9 +1728,6 @@ class REST_API extends WP_REST_Controller {
 
 					$guid = array_shift( $data );
 
-					if ( '00000160-c155-de3b-a7f5-c7f501780000' === $guid ) {
-						$what = 'test';
-					}
 					// Validate there is something to replace with.
 					if ( empty( $this->created_refs[ $guid ]['id'] ) ) {
 						return '';
