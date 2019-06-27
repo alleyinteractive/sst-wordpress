@@ -1728,6 +1728,9 @@ class REST_API extends WP_REST_Controller {
 
 					$guid = array_shift( $data );
 
+					if ( '00000160-c155-de3b-a7f5-c7f501780000' === $guid ) {
+						$what = 'test';
+					}
 					// Validate there is something to replace with.
 					if ( empty( $this->created_refs[ $guid ]['id'] ) ) {
 						return '';
@@ -1742,7 +1745,9 @@ class REST_API extends WP_REST_Controller {
 					if ( 'to id' === $to_type ) {
 						$result = $ref_id;
 					} elseif ( 'to url' === $to_type ) {
-						if ( wp_attachment_is_image( $ref_id ) ) {
+						if ( 'post' === get_post_type( $ref_id ) ) {
+							$result = get_the_permalink( $ref_id );
+						} elseif ( wp_attachment_is_image( $ref_id ) ) {
 							$size = 'full';
 							if (
 								! empty( $data[0] )
