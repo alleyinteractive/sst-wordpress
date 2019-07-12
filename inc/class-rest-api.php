@@ -47,6 +47,15 @@ class REST_API extends WP_REST_Controller {
 	public function __construct() {
 		$this->namespace = 'sst/v1';
 		$this->rest_base = 'post';
+
+		// If this looks to be an SST request, run early hooks.
+		if (
+			! empty( $_SERVER['REQUEST_URI'] )
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+			&& false !== strpos( $_SERVER['REQUEST_URI'], "{$this->namespace}/{$this->rest_base}" )
+		) {
+			$this->early_sst_hooks();
+		}
 	}
 
 	/**
@@ -90,6 +99,16 @@ class REST_API extends WP_REST_Controller {
 	}
 
 	/**
+	 * Add hooks for modifying data or functionality during SST requests, before
+	 * the request has passed through the REST API framework. For instance, if
+	 * something needs to happen on or before `init`.
+	 */
+	public function early_sst_hooks() {
+		// Don't let Jetpack try to send sync requests during SST requests.
+		add_filter( 'jetpack_sync_sender_should_load', '__return_false' );
+	}
+
+	/**
 	 * Add filters for modifying core data or functionality, but only during SST
 	 * REST requests.
 	 */
@@ -107,9 +126,6 @@ class REST_API extends WP_REST_Controller {
 		// Don't schedule async publishing actions.
 		add_filter( 'wpcom_async_transition_post_status_should_offload', '__return_false' );
 		add_filter( 'wpcom_async_transition_post_status_schedule_async', '__return_false' );
-
-		// Don't let Jetpack try to send sync requests during SST requests.
-		add_filter( 'jetpack_sync_sender_should_load', '__return_false' );
 
 		// Disable Jetpack Publicize during SST requests.
 		add_filter( 'wpas_submit_post?', '__return_false' );
@@ -617,6 +633,26 @@ class REST_API extends WP_REST_Controller {
 	protected function download_file( int $post_id, array $reference ) {
 		$source    = $reference['args'];
 		$source_id = $reference['sst_source_id'];
+
+		// Check for existing attachment matching this ID.
+		$attachment = get_posts(
+			[
+				'post_type'        => 'attachment',
+				'post_status'      => 'any',
+				'meta_query'       => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+					[
+						'key'   => 'sst_source_id',
+						'value' => $source_id,
+					],
+				],
+				'orderby'          => 'ID',
+				'order'            => 'DESC',
+				'suppress_filters' => false,
+			]
+		);
+		if ( ! empty( $attachment[0] ) ) {
+			return $attachment[0];
+		}
 
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
