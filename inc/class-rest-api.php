@@ -47,6 +47,15 @@ class REST_API extends WP_REST_Controller {
 	public function __construct() {
 		$this->namespace = 'sst/v1';
 		$this->rest_base = 'post';
+
+		// If this looks to be an SST request, run early hooks.
+		if (
+			! empty( $_SERVER['REQUEST_URI'] )
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+			&& false !== strpos( $_SERVER['REQUEST_URI'], "{$this->namespace}/{$this->rest_base}" )
+		) {
+			$this->early_sst_hooks();
+		}
 	}
 
 	/**
@@ -90,6 +99,16 @@ class REST_API extends WP_REST_Controller {
 	}
 
 	/**
+	 * Add hooks for modifying data or functionality during SST requests, before
+	 * the request has passed through the REST API framework. For instance, if
+	 * something needs to happen on or before `init`.
+	 */
+	public function early_sst_hooks() {
+		// Don't let Jetpack try to send sync requests during SST requests.
+		add_filter( 'jetpack_sync_sender_should_load', '__return_false' );
+	}
+
+	/**
 	 * Add filters for modifying core data or functionality, but only during SST
 	 * REST requests.
 	 */
@@ -107,9 +126,6 @@ class REST_API extends WP_REST_Controller {
 		// Don't schedule async publishing actions.
 		add_filter( 'wpcom_async_transition_post_status_should_offload', '__return_false' );
 		add_filter( 'wpcom_async_transition_post_status_schedule_async', '__return_false' );
-
-		// Don't let Jetpack try to send sync requests during SST requests.
-		add_filter( 'jetpack_sync_sender_should_load', '__return_false' );
 
 		// Disable Jetpack Publicize during SST requests.
 		add_filter( 'wpas_submit_post?', '__return_false' );
