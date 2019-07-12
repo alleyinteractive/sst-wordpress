@@ -634,6 +634,26 @@ class REST_API extends WP_REST_Controller {
 		$source    = $reference['args'];
 		$source_id = $reference['sst_source_id'];
 
+		// Check for existing attachment matching this ID.
+		$attachment = get_posts(
+			[
+				'post_type'        => 'attachment',
+				'post_status'      => 'any',
+				'meta_query'       => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+					[
+						'key'   => 'sst_source_id',
+						'value' => $source_id,
+					],
+				],
+				'orderby'          => 'ID',
+				'order'            => 'DESC',
+				'suppress_filters' => false,
+			]
+		);
+		if ( ! empty( $attachment[0] ) ) {
+			return $attachment[0];
+		}
+
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
 
