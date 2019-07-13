@@ -651,6 +651,8 @@ class REST_API extends WP_REST_Controller {
 			]
 		);
 		if ( ! empty( $attachment[0] ) ) {
+			// Add existing attachment to the response.
+			$this->add_object_to_response( $attachment[0] );
 			return $attachment[0];
 		}
 
