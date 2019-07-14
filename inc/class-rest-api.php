@@ -651,6 +651,14 @@ class REST_API extends WP_REST_Controller {
 			]
 		);
 		if ( ! empty( $attachment[0] ) ) {
+			// Add the existing attachment  to the response.
+			$this->add_object_to_response( $attachment[0] );
+
+			// Store the existing attachment ref for use later.
+			$this->created_refs[ $source_id ] = [
+				'id'     => $attachment[0]->ID,
+				'object' => $attachment[0],
+			];
 			return $attachment[0];
 		}
 
