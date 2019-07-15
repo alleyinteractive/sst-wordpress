@@ -1742,7 +1742,9 @@ class REST_API extends WP_REST_Controller {
 					if ( 'to id' === $to_type ) {
 						$result = $ref_id;
 					} elseif ( 'to url' === $to_type ) {
-						if ( wp_attachment_is_image( $ref_id ) ) {
+						if ( 'attachment' !== get_post_type( $ref_id ) ) {
+							$result = get_the_permalink( $ref_id );
+						} elseif ( wp_attachment_is_image( $ref_id ) ) {
 							$size = 'full';
 							if (
 								! empty( $data[0] )
