@@ -572,7 +572,7 @@ class REST_API extends WP_REST_Controller {
 
 				// Store the existing attachment ref for use later.
 				$this->created_refs[ $source_id ] = [
-					'id'     => $id,
+					'id'     => $reference['id'],
 					'object' => $post,
 				];
 				return $post;
