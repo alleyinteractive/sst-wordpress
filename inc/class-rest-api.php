@@ -566,10 +566,8 @@ class REST_API extends WP_REST_Controller {
 		if ( ! empty( $reference['id'] ) ) {
 			// Lookup the provided attachment by ID.
 			$post = get_post( $reference['id'] );
-
 			if ( ! empty( $post ) ) {
 				$this->add_object_to_response( $post );
-
 				// Store the existing attachment ref for use later.
 				$this->created_refs[ $source_id ] = [
 					'id'     => $reference['id'],
