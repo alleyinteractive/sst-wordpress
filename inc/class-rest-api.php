@@ -561,6 +561,21 @@ class REST_API extends WP_REST_Controller {
 	protected function download_file( int $post_id, array $reference ) {
 		$source    = $reference['args'];
 		$source_id = $reference['sst_source_id'];
+		$id        = $reference['id'];
+
+		// SST might send us the WP ID of the attachment in the ref.
+		if ( ! empty( $id ) ) {
+			// Add the existing attachment to the response.
+			$post = get_post( $id );
+			$this->add_object_to_response( $post );
+
+			// Store the existing attachment ref for use later.
+			$this->created_refs[ $source_id ] = [
+				'id'     => $id,
+				'object' => $post,
+			];
+			return $post;
+		}
 
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
