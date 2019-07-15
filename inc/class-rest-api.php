@@ -677,6 +677,23 @@ class REST_API extends WP_REST_Controller {
 			return $attachment[0];
 		}
 
+		// SST might send us the WP ID of the attachment in the ref.
+		if ( ! empty( $reference['id'] ) ) {
+			// Lookup the provided attachment by ID.
+			$post = get_post( $reference['id'] );
+
+			if ( ! empty( $post ) ) {
+				$this->add_object_to_response( $post );
+
+				// Store the existing attachment ref for use later.
+				$this->created_refs[ $source_id ] = [
+					'id'     => $id,
+					'object' => $post,
+				];
+				return $post;
+			}
+		}
+
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
 
