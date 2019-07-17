@@ -562,33 +562,24 @@ class REST_API extends WP_REST_Controller {
 		$source    = $reference['args'];
 		$source_id = $reference['sst_source_id'];
 
-		// SST might send us the WP ID of the attachment in the ref.
-		if ( ! empty( $reference['id'] ) ) {
-			// Lookup the provided attachment by ID.
-			$post = get_post( $reference['id'] );
-			if ( ! empty( $post ) ) {
-				$this->add_object_to_response( $post );
-				// Store the existing attachment ref for use later.
-				$this->created_refs[ $source_id ] = [
-					'id'     => $reference['id'],
-					'object' => $post,
-				];
-				return $post;
-			}
-		}
-
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
 
-		// Download the file to WordPress.
-		$attachment_id = $this->media_sideload_file(
-			$source['url'],
-			$post_id,
-			! empty( $source['title'] ) ? $source['title'] : null
-		);
+		// SST might send us the WP ID of the attachment in the ref.
+		if ( ! empty( $reference['id'] ) ) {
+			// Lookup the provided attachment by ID.
+			$attachment_id = $reference['id'];
+		} else {
+			// Download the file to WordPress.
+			$attachment_id = $this->media_sideload_file(
+				$source['url'],
+				$post_id,
+				! empty( $source['title'] ) ? $source['title'] : null
+			);
 
-		if ( is_wp_error( $attachment_id ) ) {
-			return $attachment_id;
+			if ( is_wp_error( $attachment_id ) ) {
+				return $attachment_id;
+			}
 		}
 
 		// If this is an image, make some special accommodations.
