@@ -467,6 +467,7 @@ class REST_API extends WP_REST_Controller {
 			$term_id,
 			$request
 		);
+
 		$nested_meta = apply_filters(
 			'sst_pre_save_term_meta_nested',
 			$request['nestedMeta'] ?? [],
@@ -637,10 +638,18 @@ class REST_API extends WP_REST_Controller {
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
 
-		// SST might send us the WP ID of the attachment in the ref.
-		if ( ! empty( $reference['id'] ) ) {
-			// Lookup the provided attachment by ID.
-			$attachment_id = $reference['id'];
+		// SST might send us the WP ID of the ref.
+		// Perform a basic check to ensure the ID is valid.
+		if (
+			! empty( $reference['id'] ) &&
+			is_string( get_post_status( $reference['id'] ) )
+		) {
+			$attachment_arr = [
+				'ID'         => $reference['id'],
+				'post_title' => $source['title'] ?? $source_id,
+			];
+
+			$attachment_id = wp_update_post( $attachment_arr );
 		} else {
 			// Check for existing attachment matching this ID.
 			$attachment = get_posts(
@@ -676,10 +685,10 @@ class REST_API extends WP_REST_Controller {
 				$post_id,
 				! empty( $source['title'] ) ? $source['title'] : null
 			);
+		}
 
-			if ( is_wp_error( $attachment_id ) ) {
-				return $attachment_id;
-			}
+		if ( is_wp_error( $attachment_id ) ) {
+			return $attachment_id;
 		}
 
 		// If this is an image, make some special accommodations.
@@ -726,20 +735,36 @@ class REST_API extends WP_REST_Controller {
 			return $this->created_refs[ $source_id ]['object'];
 		}
 
-		// Move the source id to meta.
-		$source['meta']['sst_source_id'] = $source_id;
+		// SST might send us the WP ID of the ref.
+		// Perform a basic check to ensure the ID is valid.
+		if (
+			! empty( $reference['id'] ) &&
+			is_string( get_post_status( $reference['id'] ) )
+		) {
+			$post_arr = [
+				'ID'          => $reference['id'],
+				'post_title'  => $source['title'] ?? $source_id,
+				'post_type'   => $reference['subtype'],
+				'post_status' => $reference['post_status'] ?? 'draft',
+			];
 
-		$post_arr = [
-			'post_title'  => $source['title'] ?? $source_id,
-			'post_type'   => $reference['subtype'],
-			'post_status' => $reference['post_status'] ?? 'draft',
-		];
+			$post_id = wp_update_post( $post_arr );
+		} else {
+			$post_arr = [
+				'post_title'  => $source['title'] ?? $source_id,
+				'post_type'   => $reference['subtype'],
+				'post_status' => $reference['post_status'] ?? 'draft',
+			];
 
-		$post_id = wp_insert_post( $post_arr, true );
+			$post_id = wp_insert_post( $post_arr, true );
+		}
 
 		if ( is_wp_error( $post_id ) ) {
 			return $post_id;
 		}
+
+		// Move the source id to meta.
+		$source['meta']['sst_source_id'] = $source_id;
 
 		// Save meta for the post.
 		$this->save_post_meta( $post_id, $source );
