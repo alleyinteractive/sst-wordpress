@@ -735,6 +735,9 @@ class REST_API extends WP_REST_Controller {
 			return $this->created_refs[ $source_id ]['object'];
 		}
 
+		// Move the source id to meta.
+		$source['meta']['sst_source_id'] = $source_id;
+
 		// SST might send us the WP ID of the ref.
 		// Perform a basic check to ensure the ID is valid.
 		if (
@@ -748,7 +751,7 @@ class REST_API extends WP_REST_Controller {
 				'post_status' => $reference['post_status'] ?? 'draft',
 			];
 
-			$post_id = wp_update_post( $post_arr );
+			$post_id = wp_update_post( $post_arr, true );
 		} else {
 			$post_arr = [
 				'post_title'  => $source['title'] ?? $source_id,
@@ -762,9 +765,6 @@ class REST_API extends WP_REST_Controller {
 		if ( is_wp_error( $post_id ) ) {
 			return $post_id;
 		}
-
-		// Move the source id to meta.
-		$source['meta']['sst_source_id'] = $source_id;
 
 		// Save meta for the post.
 		$this->save_post_meta( $post_id, $source );
