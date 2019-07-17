@@ -634,61 +634,52 @@ class REST_API extends WP_REST_Controller {
 		$source    = $reference['args'];
 		$source_id = $reference['sst_source_id'];
 
-		// SST might send us the WP ID of the attachment in the ref.
-		if ( ! empty( $reference['id'] ) ) {
-			// Lookup the provided attachment by ID.
-			$post = get_post( $reference['id'] );
-			if ( ! empty( $post ) ) {
-				$this->add_object_to_response( $post );
-				// Store the existing attachment ref for use later.
-				$this->created_refs[ $source_id ] = [
-					'id'     => $reference['id'],
-					'object' => $post,
-				];
-				return $post;
-			}
-		}
-
-		// Check for existing attachment matching this ID.
-		$attachment = get_posts(
-			[
-				'post_type'        => 'attachment',
-				'post_status'      => 'any',
-				'meta_query'       => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
-					[
-						'key'   => 'sst_source_id',
-						'value' => $source_id,
-					],
-				],
-				'orderby'          => 'ID',
-				'order'            => 'DESC',
-				'suppress_filters' => false,
-			]
-		);
-		if ( ! empty( $attachment[0] ) ) {
-			// Add the existing attachment  to the response.
-			$this->add_object_to_response( $attachment[0] );
-
-			// Store the existing attachment ref for use later.
-			$this->created_refs[ $source_id ] = [
-				'id'     => $attachment[0]->ID,
-				'object' => $attachment[0],
-			];
-			return $attachment[0];
-		}
-
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
 
-		// Download the file to WordPress.
-		$attachment_id = $this->media_sideload_file(
-			$source['url'],
-			$post_id,
-			! empty( $source['title'] ) ? $source['title'] : null
-		);
+		// SST might send us the WP ID of the attachment in the ref.
+		if ( ! empty( $reference['id'] ) ) {
+			// Lookup the provided attachment by ID.
+			$attachment_id = $reference['id'];
+		} else {
+			// Check for existing attachment matching this ID.
+			$attachment = get_posts(
+				[
+					'post_type'        => 'attachment',
+					'post_status'      => 'any',
+					'meta_query'       => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+						[
+							'key'   => 'sst_source_id',
+							'value' => $source_id,
+						],
+					],
+					'orderby'          => 'ID',
+					'order'            => 'DESC',
+					'suppress_filters' => false,
+				]
+			);
+			if ( ! empty( $attachment[0] ) ) {
+				// Add the existing attachment  to the response.
+				$this->add_object_to_response( $attachment[0] );
 
-		if ( is_wp_error( $attachment_id ) ) {
-			return $attachment_id;
+				// Store the existing attachment ref for use later.
+				$this->created_refs[ $source_id ] = [
+					'id'     => $attachment[0]->ID,
+					'object' => $attachment[0],
+				];
+				return $attachment[0];
+			}
+
+			// Download the file to WordPress.
+			$attachment_id = $this->media_sideload_file(
+				$source['url'],
+				$post_id,
+				! empty( $source['title'] ) ? $source['title'] : null
+			);
+
+			if ( is_wp_error( $attachment_id ) ) {
+				return $attachment_id;
+			}
 		}
 
 		// If this is an image, make some special accommodations.
