@@ -344,6 +344,44 @@ class REST_API extends WP_REST_Controller {
 	}
 
 	/**
+	 * Replace refs recursively.
+	 *
+	 * @param array  $nested_meta Array to be replaced.
+	 * @param string $path Path being replaced.
+	 * @return array Replaced nested meta.
+	 */
+	protected function recursive_refs_replace( array $nested_meta, string $path ) {
+		$replaced_nested_meta = [];
+		foreach ( $nested_meta as $key => $value ) {
+			$new_path = $path ? "{$path}.{$key}" : $key;
+			if ( is_array( $value ) ) {
+				$replaced_nested_meta[ $key ] = $this->recursive_refs_replace(
+					$value,
+					$new_path
+				);
+			} elseif ( is_string( $value ) ) {
+				$replaced_nested_meta[ $key ] = $this->replace_refs_in_meta_value(
+					$value,
+					$new_path
+				);
+			} else {
+				$replaced_nested_meta[ $key ] = $value;
+			}
+		}
+		return $replaced_nested_meta;
+	}
+
+	/**
+	 * Replace references in nested meta.
+	 *
+	 * @param array $nested_meta Nested meta for replacement.
+	 * @return array Replaced nested meta.
+	 */
+	protected function replace_refs_in_nested_meta( array $nested_meta ) {
+		return $this->recursive_refs_replace( $nested_meta, '' );
+	}
+
+	/**
 	 * Save an array of post meta to a given post id.
 	 *
 	 * @param int                   $post_id Post ID.
@@ -368,27 +406,43 @@ class REST_API extends WP_REST_Controller {
 			$request
 		);
 
-		if ( empty( $meta ) ) {
+		$nested_meta = apply_filters(
+			'sst_pre_save_post_meta_nested',
+			$request['nestedMeta'] ?? [],
+			$post_id,
+			$request
+		);
+
+		if ( empty( $meta ) && empty( $nested_meta ) ) {
 			return false;
 		}
 
-		foreach ( $meta as $key => $values ) {
-			// Discern between single values and multiple.
-			if ( is_array( $values ) ) {
-				delete_post_meta( $post_id, $key );
-				foreach ( $values as $value ) {
-					add_post_meta(
+		if ( ! empty( $meta ) ) {
+			foreach ( $meta as $key => $values ) {
+				// Discern between single values and multiple.
+				if ( is_array( $values ) ) {
+					delete_post_meta( $post_id, $key );
+					foreach ( $values as $value ) {
+						add_post_meta(
+							$post_id,
+							$key,
+							$this->replace_refs_in_meta_value( $value, $key )
+						);
+					}
+				} else {
+					update_post_meta(
 						$post_id,
 						$key,
-						$this->replace_refs_in_meta_value( $value, $key )
+						$this->replace_refs_in_meta_value( $values, $key )
 					);
 				}
-			} else {
-				update_post_meta(
-					$post_id,
-					$key,
-					$this->replace_refs_in_meta_value( $values, $key )
-				);
+			}
+		}
+
+		if ( ! empty( $nested_meta ) ) {
+			$nested_meta = $this->replace_refs_in_nested_meta( $nested_meta );
+			foreach ( array_keys( $nested_meta ) as $key ) {
+				update_post_meta( $post_id, $key, $nested_meta[ $key ] );
 			}
 		}
 
@@ -419,31 +473,49 @@ class REST_API extends WP_REST_Controller {
 			$term_id,
 			$request
 		);
+		$nested_meta = apply_filters(
+			'sst_pre_save_term_meta_nested',
+			$request['nestedMeta'] ?? [],
+			$term_id,
+			$request
+		);
 
-		if ( empty( $meta ) ) {
+		if ( empty( $meta ) && empty( $nested_meta ) ) {
 			return false;
 		}
 
-		foreach ( $meta as $key => $values ) {
-			// Discern between single values and multiple.
-			if ( is_array( $values ) ) {
-				delete_term_meta( $term_id, $key );
-				foreach ( $values as $value ) {
-					add_term_meta(
+		if ( ! empty( $meta ) ) {
+			foreach ( $meta as $key => $values ) {
+				// Discern between single values and multiple.
+				if ( is_array( $values ) ) {
+					delete_term_meta( $term_id, $key );
+					foreach ( $values as $value ) {
+						add_term_meta(
+							$term_id,
+							$key,
+							$this->replace_refs_in_meta_value( $value, $key )
+						);
+					}
+				} else {
+					update_term_meta(
 						$term_id,
 						$key,
-						$this->replace_refs_in_meta_value( $value, $key )
+						$this->replace_refs_in_meta_value( $values, $key )
 					);
 				}
-			} else {
-				update_term_meta(
-					$term_id,
-					$key,
-					$this->replace_refs_in_meta_value( $values, $key )
-				);
 			}
 		}
 
+		if ( ! empty( $nested_meta ) ) {
+			$nested_meta = $this->replace_refs_in_nested_meta( $nested_meta );
+			foreach ( array_keys( $nested_meta ) as $key ) {
+				update_term_meta(
+					$term_id,
+					$key,
+					$nested_meta[ $key ]
+				);
+			}
+		}
 		return true;
 	}
 
@@ -591,6 +663,14 @@ class REST_API extends WP_REST_Controller {
 			]
 		);
 		if ( ! empty( $attachment[0] ) ) {
+			// Add the existing attachment  to the response.
+			$this->add_object_to_response( $attachment[0] );
+
+			// Store the existing attachment ref for use later.
+			$this->created_refs[ $source_id ] = [
+				'id'     => $attachment[0]->ID,
+				'object' => $attachment[0],
+			];
 			return $attachment[0];
 		}
 
