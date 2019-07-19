@@ -647,6 +647,7 @@ class REST_API extends WP_REST_Controller {
 		$source_id = $reference['sst_source_id'];
 
 		// Check for existing attachment matching this ID.
+		switch_to_media_site();
 		$attachment = get_posts(
 			[
 				'post_type'        => 'attachment',
@@ -662,6 +663,7 @@ class REST_API extends WP_REST_Controller {
 				'suppress_filters' => false,
 			]
 		);
+		restore_current_blog();
 		if ( ! empty( $attachment[0] ) ) {
 			// Add the existing attachment  to the response.
 			$this->add_object_to_response( $attachment[0] );
@@ -703,7 +705,9 @@ class REST_API extends WP_REST_Controller {
 		// Save meta for the attachment.
 		$this->save_post_meta( $attachment_id, $source );
 
+		switch_to_media_site();
 		$post = get_post( $attachment_id );
+		restore_current_blog()
 
 		// Add the object to the response.
 		$this->add_object_to_response( $post );
