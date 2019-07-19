@@ -707,7 +707,7 @@ class REST_API extends WP_REST_Controller {
 
 		switch_to_media_site();
 		$post = get_post( $attachment_id );
-		restore_current_blog()
+		restore_current_blog();
 
 		// Add the object to the response.
 		$this->add_object_to_response( $post );
