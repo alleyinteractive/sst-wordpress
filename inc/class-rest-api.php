@@ -14,6 +14,7 @@ use WP_REST_Controller;
 use WP_REST_Request;
 use WP_REST_Server;
 use WP_Term;
+use function Network_Media_Library\switch_to_media_site;
 
 /**
  * REST API class for SST.
@@ -135,6 +136,11 @@ class REST_API extends WP_REST_Controller {
 
 		// Disable pings and stuff.
 		remove_action( 'publish_post', '_publish_post_hook', 5 );
+
+		// Disable AMP validation during SST requests.
+		if ( class_exists( 'AMP_Validation_Manager' ) ) {
+			remove_action( 'shutdown', [ AMP_Validation_Manager::class, 'validate_queued_posts_on_frontend' ] );
+		}
 	}
 
 	/**
@@ -463,7 +469,11 @@ class REST_API extends WP_REST_Controller {
 			require_once ABSPATH . 'wp-admin/includes/image.php';
 			require_once ABSPATH . 'wp-admin/includes/media.php';
 		}
-		return media_sideload_image( $file, $post_id, $desc, $return );
+
+		switch_to_media_site();
+		$sideload = media_sideload_image( $file, $post_id, $desc, $return );
+		restore_current_blog();
+		return $sideload;
 	}
 
 	/**
@@ -525,7 +535,9 @@ class REST_API extends WP_REST_Controller {
 			}
 
 			// Do the validation and storage stuff.
+			switch_to_media_site();
 			$id = media_handle_sideload( $file_array, $post_id, $desc );
+			restore_current_blog();
 
 			// If error storing permanently, unlink.
 			if ( is_wp_error( $id ) ) {
