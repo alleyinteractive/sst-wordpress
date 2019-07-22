@@ -467,6 +467,7 @@ class REST_API extends WP_REST_Controller {
 			$term_id,
 			$request
 		);
+
 		$nested_meta = apply_filters(
 			'sst_pre_save_term_meta_nested',
 			$request['nestedMeta'] ?? [],
@@ -634,43 +635,57 @@ class REST_API extends WP_REST_Controller {
 		$source    = $reference['args'];
 		$source_id = $reference['sst_source_id'];
 
-		// Check for existing attachment matching this ID.
-		$attachment = get_posts(
-			[
-				'post_type'        => 'attachment',
-				'post_status'      => 'any',
-				'meta_query'       => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
-					[
-						'key'   => 'sst_source_id',
-						'value' => $source_id,
-					],
-				],
-				'orderby'          => 'ID',
-				'order'            => 'DESC',
-				'suppress_filters' => false,
-			]
-		);
-		if ( ! empty( $attachment[0] ) ) {
-			// Add the existing attachment  to the response.
-			$this->add_object_to_response( $attachment[0] );
-
-			// Store the existing attachment ref for use later.
-			$this->created_refs[ $source_id ] = [
-				'id'     => $attachment[0]->ID,
-				'object' => $attachment[0],
-			];
-			return $attachment[0];
-		}
-
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
 
-		// Download the file to WordPress.
-		$attachment_id = $this->media_sideload_file(
-			$source['url'],
-			$post_id,
-			! empty( $source['title'] ) ? $source['title'] : null
-		);
+		// SST might send us the WP ID of the ref.
+		// Perform a basic check to ensure the ID is valid.
+		if (
+			! empty( $reference['id'] ) &&
+			is_string( get_post_status( $reference['id'] ) )
+		) {
+			$attachment_arr = [
+				'ID'         => $reference['id'],
+				'post_title' => $source['title'] ?? $source_id,
+			];
+
+			$attachment_id = wp_update_post( $attachment_arr );
+		} else {
+			// Check for existing attachment matching this ID.
+			$attachment = get_posts(
+				[
+					'post_type'        => 'attachment',
+					'post_status'      => 'any',
+					'meta_query'       => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+						[
+							'key'   => 'sst_source_id',
+							'value' => $source_id,
+						],
+					],
+					'orderby'          => 'ID',
+					'order'            => 'DESC',
+					'suppress_filters' => false,
+				]
+			);
+			if ( ! empty( $attachment[0] ) ) {
+				// Add the existing attachment  to the response.
+				$this->add_object_to_response( $attachment[0] );
+
+				// Store the existing attachment ref for use later.
+				$this->created_refs[ $source_id ] = [
+					'id'     => $attachment[0]->ID,
+					'object' => $attachment[0],
+				];
+				return $attachment[0];
+			}
+
+			// Download the file to WordPress.
+			$attachment_id = $this->media_sideload_file(
+				$source['url'],
+				$post_id,
+				! empty( $source['title'] ) ? $source['title'] : null
+			);
+		}
 
 		if ( is_wp_error( $attachment_id ) ) {
 			return $attachment_id;
@@ -723,13 +738,29 @@ class REST_API extends WP_REST_Controller {
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
 
-		$post_arr = [
-			'post_title'  => $source['title'] ?? $source_id,
-			'post_type'   => $reference['subtype'],
-			'post_status' => $reference['post_status'] ?? 'draft',
-		];
+		// SST might send us the WP ID of the ref.
+		// Perform a basic check to ensure the ID is valid.
+		if (
+			! empty( $reference['id'] ) &&
+			is_string( get_post_status( $reference['id'] ) )
+		) {
+			$post_arr = [
+				'ID'          => $reference['id'],
+				'post_title'  => $source['title'] ?? $source_id,
+				'post_type'   => $reference['subtype'],
+				'post_status' => $reference['post_status'] ?? 'draft',
+			];
 
-		$post_id = wp_insert_post( $post_arr, true );
+			$post_id = wp_update_post( $post_arr, true );
+		} else {
+			$post_arr = [
+				'post_title'  => $source['title'] ?? $source_id,
+				'post_type'   => $reference['subtype'],
+				'post_status' => $reference['post_status'] ?? 'draft',
+			];
+
+			$post_id = wp_insert_post( $post_arr, true );
+		}
 
 		if ( is_wp_error( $post_id ) ) {
 			return $post_id;
