@@ -663,8 +663,11 @@ class REST_API extends WP_REST_Controller {
 				'suppress_filters' => false,
 			]
 		);
-		restore_current_blog();
+
 		if ( ! empty( $attachment[0] ) ) {
+			// Get out of the media site.
+			restore_current_blog();
+
 			// Add the existing attachment  to the response.
 			$this->add_object_to_response( $attachment[0] );
 
@@ -705,8 +708,9 @@ class REST_API extends WP_REST_Controller {
 		// Save meta for the attachment.
 		$this->save_post_meta( $attachment_id, $source );
 
-		switch_to_media_site();
 		$post = get_post( $attachment_id );
+
+		// Once we're done with media, switch back.
 		restore_current_blog();
 
 		// Add the object to the response.
@@ -1013,7 +1017,7 @@ class REST_API extends WP_REST_Controller {
 		 *
 		 * @param \WP_Post $post Post object.
 		 */
-		\add_action( 'sst_after_save', $post );
+		\do_action( 'sst_after_save', $post );
 
 		return true;
 	}
