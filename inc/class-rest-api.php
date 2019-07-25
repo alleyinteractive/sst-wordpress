@@ -892,6 +892,13 @@ class REST_API extends WP_REST_Controller {
 			return $fields_update;
 		}
 
+		/**
+		 * Set any additional data for the post.
+		 *
+		 * @param \WP_Post $post Post object.
+		 */
+		\add_action( 'sst_after_save', $post );
+
 		return true;
 	}
 
@@ -1029,7 +1036,9 @@ class REST_API extends WP_REST_Controller {
 	 *                       WP_Error object otherwise.
 	 */
 	public function update_item_permissions_check( $request ) {
+		do_action( 'sst_pre_update_item_permissions_check', $request );
 		$prepared_post = $this->get_post( $request['id'] );
+
 		if ( is_wp_error( $prepared_post ) ) {
 			return $prepared_post;
 		}
@@ -1154,6 +1163,20 @@ class REST_API extends WP_REST_Controller {
 			$post_data['type'],
 			// Meta is saved separately to allow for unregistered meta.
 			$post_data['meta']
+		);
+
+		/**
+		 * Filter any "prepared" post before it gets sent to the core endpoint.
+		 *
+		 * @param stdClass        $post_data An object representing a single
+		 *                                   post prepared for inserting or
+		 *                                   updating the database.
+		 * @param WP_REST_Request $request   Request object.
+		 */
+		$post_data = apply_filters(
+			'sst_prepare_post',
+			(object) $post_data,
+			$request
 		);
 
 		/**
