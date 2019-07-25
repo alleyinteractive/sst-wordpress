@@ -14,6 +14,7 @@ use WP_REST_Controller;
 use WP_REST_Request;
 use WP_REST_Server;
 use WP_Term;
+use function Network_Media_Library\switch_to_media_site;
 
 /**
  * REST API class for SST.
@@ -135,6 +136,11 @@ class REST_API extends WP_REST_Controller {
 
 		// Disable pings and stuff.
 		remove_action( 'publish_post', '_publish_post_hook', 5 );
+
+		// Disable AMP validation during SST requests.
+		if ( class_exists( 'AMP_Validation_Manager' ) ) {
+			remove_action( 'shutdown', [ AMP_Validation_Manager::class, 'validate_queued_posts_on_frontend' ] );
+		}
 	}
 
 	/**
@@ -338,6 +344,44 @@ class REST_API extends WP_REST_Controller {
 	}
 
 	/**
+	 * Replace refs recursively.
+	 *
+	 * @param array  $nested_meta Array to be replaced.
+	 * @param string $path Path being replaced.
+	 * @return array Replaced nested meta.
+	 */
+	protected function recursive_refs_replace( array $nested_meta, string $path ) {
+		$replaced_nested_meta = [];
+		foreach ( $nested_meta as $key => $value ) {
+			$new_path = $path ? "{$path}.{$key}" : $key;
+			if ( is_array( $value ) ) {
+				$replaced_nested_meta[ $key ] = $this->recursive_refs_replace(
+					$value,
+					$new_path
+				);
+			} elseif ( is_string( $value ) ) {
+				$replaced_nested_meta[ $key ] = $this->replace_refs_in_meta_value(
+					$value,
+					$new_path
+				);
+			} else {
+				$replaced_nested_meta[ $key ] = $value;
+			}
+		}
+		return $replaced_nested_meta;
+	}
+
+	/**
+	 * Replace references in nested meta.
+	 *
+	 * @param array $nested_meta Nested meta for replacement.
+	 * @return array Replaced nested meta.
+	 */
+	protected function replace_refs_in_nested_meta( array $nested_meta ) {
+		return $this->recursive_refs_replace( $nested_meta, '' );
+	}
+
+	/**
 	 * Save an array of post meta to a given post id.
 	 *
 	 * @param int                   $post_id Post ID.
@@ -362,27 +406,43 @@ class REST_API extends WP_REST_Controller {
 			$request
 		);
 
-		if ( empty( $meta ) ) {
+		$nested_meta = apply_filters(
+			'sst_pre_save_post_meta_nested',
+			$request['nestedMeta'] ?? [],
+			$post_id,
+			$request
+		);
+
+		if ( empty( $meta ) && empty( $nested_meta ) ) {
 			return false;
 		}
 
-		foreach ( $meta as $key => $values ) {
-			// Discern between single values and multiple.
-			if ( is_array( $values ) ) {
-				delete_post_meta( $post_id, $key );
-				foreach ( $values as $value ) {
-					add_post_meta(
+		if ( ! empty( $meta ) ) {
+			foreach ( $meta as $key => $values ) {
+				// Discern between single values and multiple.
+				if ( is_array( $values ) ) {
+					delete_post_meta( $post_id, $key );
+					foreach ( $values as $value ) {
+						add_post_meta(
+							$post_id,
+							$key,
+							$this->replace_refs_in_meta_value( $value, $key )
+						);
+					}
+				} else {
+					update_post_meta(
 						$post_id,
 						$key,
-						$this->replace_refs_in_meta_value( $value, $key )
+						$this->replace_refs_in_meta_value( $values, $key )
 					);
 				}
-			} else {
-				update_post_meta(
-					$post_id,
-					$key,
-					$this->replace_refs_in_meta_value( $values, $key )
-				);
+			}
+		}
+
+		if ( ! empty( $nested_meta ) ) {
+			$nested_meta = $this->replace_refs_in_nested_meta( $nested_meta );
+			foreach ( array_keys( $nested_meta ) as $key ) {
+				update_post_meta( $post_id, $key, $nested_meta[ $key ] );
 			}
 		}
 
@@ -413,31 +473,49 @@ class REST_API extends WP_REST_Controller {
 			$term_id,
 			$request
 		);
+		$nested_meta = apply_filters(
+			'sst_pre_save_term_meta_nested',
+			$request['nestedMeta'] ?? [],
+			$term_id,
+			$request
+		);
 
-		if ( empty( $meta ) ) {
+		if ( empty( $meta ) && empty( $nested_meta ) ) {
 			return false;
 		}
 
-		foreach ( $meta as $key => $values ) {
-			// Discern between single values and multiple.
-			if ( is_array( $values ) ) {
-				delete_term_meta( $term_id, $key );
-				foreach ( $values as $value ) {
-					add_term_meta(
+		if ( ! empty( $meta ) ) {
+			foreach ( $meta as $key => $values ) {
+				// Discern between single values and multiple.
+				if ( is_array( $values ) ) {
+					delete_term_meta( $term_id, $key );
+					foreach ( $values as $value ) {
+						add_term_meta(
+							$term_id,
+							$key,
+							$this->replace_refs_in_meta_value( $value, $key )
+						);
+					}
+				} else {
+					update_term_meta(
 						$term_id,
 						$key,
-						$this->replace_refs_in_meta_value( $value, $key )
+						$this->replace_refs_in_meta_value( $values, $key )
 					);
 				}
-			} else {
-				update_term_meta(
-					$term_id,
-					$key,
-					$this->replace_refs_in_meta_value( $values, $key )
-				);
 			}
 		}
 
+		if ( ! empty( $nested_meta ) ) {
+			$nested_meta = $this->replace_refs_in_nested_meta( $nested_meta );
+			foreach ( array_keys( $nested_meta ) as $key ) {
+				update_term_meta(
+					$term_id,
+					$key,
+					$nested_meta[ $key ]
+				);
+			}
+		}
 		return true;
 	}
 
@@ -463,7 +541,11 @@ class REST_API extends WP_REST_Controller {
 			require_once ABSPATH . 'wp-admin/includes/image.php';
 			require_once ABSPATH . 'wp-admin/includes/media.php';
 		}
-		return media_sideload_image( $file, $post_id, $desc, $return );
+
+		switch_to_media_site();
+		$sideload = media_sideload_image( $file, $post_id, $desc, $return );
+		restore_current_blog();
+		return $sideload;
 	}
 
 	/**
@@ -525,7 +607,9 @@ class REST_API extends WP_REST_Controller {
 			}
 
 			// Do the validation and storage stuff.
+			switch_to_media_site();
 			$id = media_handle_sideload( $file_array, $post_id, $desc );
+			restore_current_blog();
 
 			// If error storing permanently, unlink.
 			if ( is_wp_error( $id ) ) {
@@ -562,6 +646,36 @@ class REST_API extends WP_REST_Controller {
 		$source    = $reference['args'];
 		$source_id = $reference['sst_source_id'];
 
+		// Check for existing attachment matching this ID.
+		switch_to_media_site();
+		$attachment = get_posts(
+			[
+				'post_type'        => 'attachment',
+				'post_status'      => 'any',
+				'meta_query'       => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+					[
+						'key'   => 'sst_source_id',
+						'value' => $source_id,
+					],
+				],
+				'orderby'          => 'ID',
+				'order'            => 'DESC',
+				'suppress_filters' => false,
+			]
+		);
+		restore_current_blog();
+		if ( ! empty( $attachment[0] ) ) {
+			// Add the existing attachment  to the response.
+			$this->add_object_to_response( $attachment[0] );
+
+			// Store the existing attachment ref for use later.
+			$this->created_refs[ $source_id ] = [
+				'id'     => $attachment[0]->ID,
+				'object' => $attachment[0],
+			];
+			return $attachment[0];
+		}
+
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
 
@@ -591,7 +705,9 @@ class REST_API extends WP_REST_Controller {
 		// Save meta for the attachment.
 		$this->save_post_meta( $attachment_id, $source );
 
+		switch_to_media_site();
 		$post = get_post( $attachment_id );
+		restore_current_blog();
 
 		// Add the object to the response.
 		$this->add_object_to_response( $post );
@@ -1765,7 +1881,9 @@ class REST_API extends WP_REST_Controller {
 					if ( 'to id' === $to_type ) {
 						$result = $ref_id;
 					} elseif ( 'to url' === $to_type ) {
-						if ( wp_attachment_is_image( $ref_id ) ) {
+						if ( 'attachment' !== get_post_type( $ref_id ) ) {
+							$result = get_the_permalink( $ref_id );
+						} elseif ( wp_attachment_is_image( $ref_id ) ) {
 							$size = 'full';
 							if (
 								! empty( $data[0] )
