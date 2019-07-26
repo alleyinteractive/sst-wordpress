@@ -110,6 +110,9 @@ class REST_API extends WP_REST_Controller {
 
 		// Prevent AMP from loading.
 		remove_action( 'init', 'amp_init', 0 );
+
+		// Fire early hook.
+		do_action( 'sst_on_early' );
 	}
 
 	/**
