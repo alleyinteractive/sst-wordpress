@@ -692,12 +692,26 @@ class REST_API extends WP_REST_Controller {
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
 
-		// Download the file to WordPress.
-		$attachment_id = $this->media_sideload_file(
-			$source['url'],
-			$post_id,
-			! empty( $source['title'] ) ? $source['title'] : null
-		);
+		// SST might send us the WP ID of the ref.
+		// Perform a basic check to ensure the ID is valid.
+		if (
+			! empty( $reference['id'] ) &&
+			is_string( get_post_status( $reference['id'] ) )
+		) {
+			$attachment_arr = [
+				'ID'         => $reference['id'],
+				'post_title' => $source['title'] ?? $source_id,
+			];
+
+			$attachment_id = wp_update_post( $attachment_arr );
+		} else {
+			// Download the file to WordPress.
+			$attachment_id = $this->media_sideload_file(
+				$source['url'],
+				$post_id,
+				! empty( $source['title'] ) ? $source['title'] : null
+			);
+		}
 
 		if ( is_wp_error( $attachment_id ) ) {
 			// Restore the site before returning.
@@ -756,13 +770,29 @@ class REST_API extends WP_REST_Controller {
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
 
-		$post_arr = [
-			'post_title'  => $source['title'] ?? $source_id,
-			'post_type'   => $reference['subtype'],
-			'post_status' => $reference['post_status'] ?? 'draft',
-		];
+		// SST might send us the WP ID of the ref.
+		// Perform a basic check to ensure the ID is valid.
+		if (
+			! empty( $reference['id'] ) &&
+			is_string( get_post_status( $reference['id'] ) )
+		) {
+			$post_arr = [
+				'ID'          => $reference['id'],
+				'post_title'  => $source['title'] ?? $source_id,
+				'post_type'   => $reference['subtype'],
+				'post_status' => $reference['post_status'] ?? 'draft',
+			];
 
-		$post_id = wp_insert_post( $post_arr, true );
+			$post_id = wp_update_post( $post_arr, true );
+		} else {
+			$post_arr = [
+				'post_title'  => $source['title'] ?? $source_id,
+				'post_type'   => $reference['subtype'],
+				'post_status' => $reference['post_status'] ?? 'draft',
+			];
+
+			$post_id = wp_insert_post( $post_arr, true );
+		}
 
 		if ( is_wp_error( $post_id ) ) {
 			return $post_id;
