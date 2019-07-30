@@ -1925,6 +1925,16 @@ class REST_API extends WP_REST_Controller {
 						} else {
 							$result = wp_get_attachment_url( $ref_id );
 						}
+					} else {
+						/**
+						 * Fire on an unknown reference replacement.
+						 *
+						 * @param mixed  $result The result of the replacement.
+						 * @param string $to_type The type of reference to replace (`to field`).
+						 * @param int    $ref_id Reference ID.
+						 * @param string $context Context in which this replacement is happening.
+						 */
+						$result = apply_filters( 'sst_replace_ref', $result, $to_type, $ref_id, $context );
 					}
 
 					return $result;
