@@ -143,6 +143,9 @@ class REST_API extends WP_REST_Controller {
 		// Disable pings and stuff.
 		remove_action( 'publish_post', '_publish_post_hook', 5 );
 
+		// Disable revisions.
+		add_filter( 'wp_revisions_to_keep', '__return_zero', 99 );
+
 		// Disable AMP validation during SST requests.
 		if ( class_exists( 'AMP_Validation_Manager' ) ) {
 			remove_action( 'shutdown', [ AMP_Validation_Manager::class, 'validate_queued_posts_on_frontend' ] );
@@ -671,9 +674,6 @@ class REST_API extends WP_REST_Controller {
 		);
 
 		if ( ! empty( $attachment[0] ) ) {
-			// Get out of the media site.
-			restore_current_blog();
-
 			// Add the existing attachment  to the response.
 			$this->add_object_to_response( $attachment[0] );
 
@@ -682,6 +682,10 @@ class REST_API extends WP_REST_Controller {
 				'id'     => $attachment[0]->ID,
 				'object' => $attachment[0],
 			];
+
+			// Get out of the media site.
+			restore_current_blog();
+
 			return $attachment[0];
 		}
 
@@ -696,6 +700,9 @@ class REST_API extends WP_REST_Controller {
 		);
 
 		if ( is_wp_error( $attachment_id ) ) {
+			// Restore the site before returning.
+			restore_current_blog();
+
 			return $attachment_id;
 		}
 
@@ -716,9 +723,6 @@ class REST_API extends WP_REST_Controller {
 
 		$post = get_post( $attachment_id );
 
-		// Once we're done with media, switch back.
-		restore_current_blog();
-
 		// Add the object to the response.
 		$this->add_object_to_response( $post );
 
@@ -727,6 +731,9 @@ class REST_API extends WP_REST_Controller {
 			'id'     => $attachment_id,
 			'object' => $post,
 		];
+
+		// Once we're done with media, switch back.
+		restore_current_blog();
 
 		return $post;
 	}
@@ -1018,13 +1025,6 @@ class REST_API extends WP_REST_Controller {
 			return $fields_update;
 		}
 
-		/**
-		 * Set any additional data for the post.
-		 *
-		 * @param \WP_Post $post Post object.
-		 */
-		\do_action( 'sst_after_save', $post );
-
 		return true;
 	}
 
@@ -1141,6 +1141,9 @@ class REST_API extends WP_REST_Controller {
 			$this->response_objects['posts'] ?? []
 		);
 
+		// Fire the after save action.
+		$this->after_save( $post );
+
 		// Set the API response.
 		$api_response = rest_ensure_response(
 			array_merge(
@@ -1236,10 +1239,13 @@ class REST_API extends WP_REST_Controller {
 			);
 		}
 
+		$post = get_post( $post_id );
+
 		$addl_data_result = $this->set_additional_data_for_request(
 			$request,
-			get_post( $post_id )
+			$post
 		);
+
 		if ( is_wp_error( $addl_data_result ) ) {
 			return $addl_data_result;
 		}
@@ -1253,8 +1259,26 @@ class REST_API extends WP_REST_Controller {
 				]
 			)
 		);
+
+		// Fire the after save action.
+		$this->after_save( $post );
+
 		$api_response->set_status( 200 );
 		return $api_response;
+	}
+
+	/**
+	 * Fire the after save action.
+	 *
+	 * @param \WP_Post $post Post object.
+	 */
+	protected function after_save( $post ) {
+		/**
+		 * Set any additional data for the post.
+		 *
+		 * @param \WP_Post $post Post object.
+		 */
+		\do_action( 'sst_after_save', $post );
 	}
 
 	/**
