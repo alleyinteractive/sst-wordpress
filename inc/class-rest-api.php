@@ -785,13 +785,44 @@ class REST_API extends WP_REST_Controller {
 
 			$post_id = wp_update_post( $post_arr, true );
 		} else {
-			$post_arr = [
-				'post_title'  => $source['title'] ?? $source_id,
-				'post_type'   => $reference['subtype'],
-				'post_status' => $reference['post_status'] ?? 'draft',
-			];
+			// Do a quick check to see if the reference already exists.
+			// Note: this could have some bad performance, maybe this can be optimized and requested all together.
+			$existing_refs = get_posts(
+				[
+					'post_type'        => $reference['subtype'],
+					'post_status'      => 'any',
+					'meta_query'       => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+						[
+							'key'   => 'sst_source_id',
+							'value' => $source_id,
+						],
+					],
+					'orderby'          => 'ID',
+					'order'            => 'DESC',
+					'posts_per_page'   => 1,
+					'suppress_filters' => false,
+				]
+			);
 
-			$post_id = wp_insert_post( $post_arr, true );
+			// Update the existing reference if it was found.
+			if ( ! empty( $existing_refs ) ) {
+				$post_arr = [
+					'ID'          => $existing_refs[0]->ID,
+					'post_title'  => $source['title'] ?? $source_id,
+					'post_type'   => $reference['subtype'],
+					'post_status' => $reference['post_status'] ?? 'draft',
+				];
+
+				$post_id = wp_update_post( $post_arr, true );
+			} else {
+				$post_arr = [
+					'post_title'  => $source['title'] ?? $source_id,
+					'post_type'   => $reference['subtype'],
+					'post_status' => $reference['post_status'] ?? 'draft',
+				];
+
+				$post_id = wp_insert_post( $post_arr, true );
+			}
 		}
 
 		if ( is_wp_error( $post_id ) ) {
