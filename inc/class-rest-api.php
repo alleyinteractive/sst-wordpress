@@ -113,6 +113,18 @@ class REST_API extends WP_REST_Controller {
 
 		// Fire early hook.
 		do_action( 'sst_on_early' );
+
+		add_action( 'rest_api_init', [ $this, 'remove_jetpack_field' ], 99 );
+	}
+
+	/**
+	 * Remove a Jetpack field that is conflicting with Network Media Library
+	 */
+	public function remove_jetpack_field() {
+		global $wp_rest_additional_fields;
+		if ( ! empty( $wp_rest_additional_fields['post']['jetpack_featured_media_url'] ) ) {
+			unset( $wp_rest_additional_fields['post']['jetpack_featured_media_url'] );
+		}
 	}
 
 	/**
@@ -1976,40 +1988,47 @@ class REST_API extends WP_REST_Controller {
 					if ( 'to id' === $to_type ) {
 						$result = $ref_id;
 					} elseif ( 'to url' === $to_type ) {
+						// Currently this only supports attachment URLs since we have to switch.
+						switch_to_media_site();
+
 						if ( 'attachment' !== get_post_type( $ref_id ) ) {
 							$result = get_the_permalink( $ref_id );
-						} elseif ( wp_attachment_is_image( $ref_id ) ) {
-							$size = 'full';
-							if (
-								! empty( $data[0] )
-								&& 'size ' === substr( $data[0], 0, 5 )
-							) {
-								$size = substr( array_shift( $data ), 5 );
-							}
-
-							/**
-							 * Filter the image size used when running image
-							 * URL replacements.
-							 *
-							 * @param string $size    Image size.
-							 * @param string $context Context in which the image
-							 *                        is being used. Either
-							 *                        'post_content' or a meta
-							 *                        key.
-							 */
-							$size = apply_filters(
-								'sst_image_size_for_replacement',
-								$size,
-								$context
-							);
-
-							$result = wp_get_attachment_image_url(
-								$ref_id,
-								$size
-							);
 						} else {
-							$result = wp_get_attachment_url( $ref_id );
+							if ( wp_attachment_is_image( $ref_id ) ) {
+								$size = 'full';
+								if (
+									! empty( $data[0] )
+									&& 'size ' === substr( $data[0], 0, 5 )
+								) {
+									$size = substr( array_shift( $data ), 5 );
+								}
+
+								/**
+								 * Filter the image size used when running image
+								 * URL replacements.
+								 *
+								 * @param string $size    Image size.
+								 * @param string $context Context in which the image
+								 *                        is being used. Either
+								 *                        'post_content' or a meta
+								 *                        key.
+								 */
+								$size = apply_filters(
+									'sst_image_size_for_replacement',
+									$size,
+									$context
+								);
+
+								$result = wp_get_attachment_image_url(
+									$ref_id,
+									$size
+								);
+							} else {
+								$result = wp_get_attachment_url( $ref_id );
+							}
 						}
+
+						restore_current_blog();
 					} else {
 						/**
 						 * Fire on an unknown reference replacement.
