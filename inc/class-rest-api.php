@@ -113,18 +113,6 @@ class REST_API extends WP_REST_Controller {
 
 		// Fire early hook.
 		do_action( 'sst_on_early' );
-
-		add_action( 'rest_api_init', [ $this, 'remove_jetpack_field' ], 99 );
-	}
-
-	/**
-	 * Remove a Jetpack field that is conflicting with Network Media Library
-	 */
-	public function remove_jetpack_field() {
-		global $wp_rest_additional_fields;
-		if ( ! empty( $wp_rest_additional_fields['post']['jetpack_featured_media_url'] ) ) {
-			unset( $wp_rest_additional_fields['post']['jetpack_featured_media_url'] );
-		}
 	}
 
 	/**
