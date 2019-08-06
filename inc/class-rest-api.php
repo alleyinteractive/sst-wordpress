@@ -105,7 +105,7 @@ class REST_API extends WP_REST_Controller {
 	 */
 	public function early_sst_hooks() {
 		// Don't let Jetpack try to send sync requests during SST requests.
-		add_filter( 'jetpack_sync_sender_should_load', '__return_false' );
+		add_filter( 'jetpack_sync_sender_should_load', '__return_false', 999999 );
 	}
 
 	/**
@@ -652,6 +652,7 @@ class REST_API extends WP_REST_Controller {
 			$attachment_id = wp_update_post( $attachment_arr );
 		} else {
 			// Check for existing attachment matching this ID.
+			// Used only on Accuweather/nested meta branch.
 			$attachment = get_posts(
 				[
 					'post_type'        => 'attachment',
