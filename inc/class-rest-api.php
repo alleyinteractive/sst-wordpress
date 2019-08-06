@@ -47,6 +47,15 @@ class REST_API extends WP_REST_Controller {
 	public function __construct() {
 		$this->namespace = 'sst/v1';
 		$this->rest_base = 'post';
+
+		// If this looks to be an SST request, run early hooks.
+		if (
+			! empty( $_SERVER['REQUEST_URI'] )
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+			&& false !== strpos( $_SERVER['REQUEST_URI'], "{$this->namespace}/{$this->rest_base}" )
+		) {
+			$this->early_sst_hooks();
+		}
 	}
 
 	/**
@@ -90,6 +99,16 @@ class REST_API extends WP_REST_Controller {
 	}
 
 	/**
+	 * Add hooks for modifying data or functionality during SST requests, before
+	 * the request has passed through the REST API framework. For instance, if
+	 * something needs to happen on or before `init`.
+	 */
+	public function early_sst_hooks() {
+		// Don't let Jetpack try to send sync requests during SST requests.
+		add_filter( 'jetpack_sync_sender_should_load', '__return_false', 999999 );
+	}
+
+	/**
 	 * Add filters for modifying core data or functionality, but only during SST
 	 * REST requests.
 	 */
@@ -107,6 +126,12 @@ class REST_API extends WP_REST_Controller {
 		// Don't schedule async publishing actions.
 		add_filter( 'wpcom_async_transition_post_status_should_offload', '__return_false' );
 		add_filter( 'wpcom_async_transition_post_status_schedule_async', '__return_false' );
+
+		// Disable Jetpack Publicize during SST requests.
+		add_filter( 'wpas_submit_post?', '__return_false' );
+
+		// Disable pixel tracking of uploads.
+		remove_filter( 'wp_handle_upload', '\Automattic\VIP\Stats\handle_file_upload', 9999 );
 
 		// Disable pings and stuff.
 		remove_action( 'publish_post', '_publish_post_hook', 5 );
@@ -557,12 +582,26 @@ class REST_API extends WP_REST_Controller {
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
 
-		// Download the file to WordPress.
-		$attachment_id = $this->media_sideload_file(
-			$source['url'],
-			$post_id,
-			! empty( $source['title'] ) ? $source['title'] : null
-		);
+		// SST might send us the WP ID of the ref.
+		// Perform a basic check to ensure the ID is valid.
+		if (
+			! empty( $reference['id'] ) &&
+			is_string( get_post_status( $reference['id'] ) )
+		) {
+			$attachment_arr = [
+				'ID'         => $reference['id'],
+				'post_title' => $source['title'] ?? $source_id,
+			];
+
+			$attachment_id = wp_update_post( $attachment_arr );
+		} else {
+			// Download the file to WordPress.
+			$attachment_id = $this->media_sideload_file(
+				$source['url'],
+				$post_id,
+				! empty( $source['title'] ) ? $source['title'] : null
+			);
+		}
 
 		if ( is_wp_error( $attachment_id ) ) {
 			return $attachment_id;
@@ -615,12 +654,29 @@ class REST_API extends WP_REST_Controller {
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
 
-		$post_arr = [
-			'post_title' => $source['title'] ?? $source_id,
-			'post_type'  => $reference['subtype'],
-		];
+		// SST might send us the WP ID of the ref.
+		// Perform a basic check to ensure the ID is valid.
+		if (
+			! empty( $reference['id'] ) &&
+			is_string( get_post_status( $reference['id'] ) )
+		) {
+			$post_arr = [
+				'ID'          => $reference['id'],
+				'post_title'  => $source['title'] ?? $source_id,
+				'post_type'   => $reference['subtype'],
+				'post_status' => $reference['post_status'] ?? 'draft',
+			];
 
-		$post_id = wp_insert_post( $post_arr, true );
+			$post_id = wp_update_post( $post_arr, true );
+		} else {
+			$post_arr = [
+				'post_title'  => $source['title'] ?? $source_id,
+				'post_type'   => $reference['subtype'],
+				'post_status' => $reference['post_status'] ?? 'draft',
+			];
+
+			$post_id = wp_insert_post( $post_arr, true );
+		}
 
 		if ( is_wp_error( $post_id ) ) {
 			return $post_id;
@@ -699,6 +755,9 @@ class REST_API extends WP_REST_Controller {
 			} elseif ( is_int( $source['parent'] ) ) {
 				$args['parent'] = $source['parent'];
 			}
+		}
+		if ( ! empty( $source['description'] ) ) {
+			$args['description'] = $source['description'];
 		}
 		if ( ! empty( $source['slug'] ) ) {
 			$args['slug'] = $source['slug'];
@@ -1730,7 +1789,9 @@ class REST_API extends WP_REST_Controller {
 					if ( 'to id' === $to_type ) {
 						$result = $ref_id;
 					} elseif ( 'to url' === $to_type ) {
-						if ( wp_attachment_is_image( $ref_id ) ) {
+						if ( 'attachment' !== get_post_type( $ref_id ) ) {
+							$result = get_the_permalink( $ref_id );
+						} elseif ( wp_attachment_is_image( $ref_id ) ) {
 							$size = 'full';
 							if (
 								! empty( $data[0] )
