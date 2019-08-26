@@ -106,7 +106,7 @@ class REST_API extends WP_REST_Controller {
 	 */
 	public function early_sst_hooks() {
 		// Don't let Jetpack try to send sync requests during SST requests.
-		add_filter( 'jetpack_sync_sender_should_load', '__return_false', 99 );
+		add_filter( 'jetpack_sync_sender_should_load', '__return_false', 999999 );
 
 		// Prevent AMP from loading.
 		remove_action( 'init', 'amp_init', 0 );
