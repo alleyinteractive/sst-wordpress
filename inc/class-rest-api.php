@@ -1041,6 +1041,8 @@ class REST_API extends WP_REST_Controller {
 						)
 					)
 				);
+
+				do_action( 'sst_after_create_ref_final', $result, $reference, $post_id, $request );
 				continue;
 			}
 
@@ -1059,6 +1061,9 @@ class REST_API extends WP_REST_Controller {
 					true
 				);
 			}
+
+			// Fire off one final after create ref. action.
+			do_action( 'sst_after_create_ref_final', $result, $reference, $post_id, $request );
 		}
 	}
 
