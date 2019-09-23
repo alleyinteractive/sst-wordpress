@@ -713,6 +713,15 @@ class REST_API extends WP_REST_Controller {
 			);
 		}
 
+		// Add a filter to modify the download URL (if failed).
+		$attachment_id = apply_filters(
+			'sst_download_file_ref',
+			$attachment_id,
+			$source['url'],
+			$post_id,
+			! empty( $source['title'] ) ? $source['title'] : null
+		);
+
 		if ( is_wp_error( $attachment_id ) ) {
 			// Restore the site before returning.
 			restore_current_blog();
