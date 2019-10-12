@@ -1748,17 +1748,17 @@ class REST_API extends WP_REST_Controller {
 					sprintf( __( 'Invalid meta value for key %1$s. Meta values must either be numeric arrays or scalar values.', 'sst' ), $meta_key )
 				);
 			}
-			if ( is_array( $meta_value ) ) {
-				foreach ( $meta_value as $individual_value ) {
-					if ( ! is_scalar( $individual_value ) ) {
-						return new WP_Error(
-							'sst-invalid-meta-value',
-							/* translators: 1: meta key */
-							sprintf( __( 'Invalid meta value for key %1$s. Meta values within arrays must be scalar values.', 'sst' ), $meta_key )
-						);
-					}
-				}
-			}
+			// if ( is_array( $meta_value ) ) {
+			// 	foreach ( $meta_value as $individual_value ) {
+			// 		if ( ! is_scalar( $individual_value ) ) {
+			// 			return new WP_Error(
+			// 				'sst-invalid-meta-value',
+			// 				/* translators: 1: meta key */
+			// 				sprintf( __( 'Invalid meta value for key %1$s. Meta values within arrays must be scalar values.', 'sst' ), $meta_key )
+			// 			);
+			// 		}
+			// 	}
+			// }
 		}
 
 		return true;
