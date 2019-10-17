@@ -806,6 +806,7 @@ class REST_API extends WP_REST_Controller {
 							'value' => $source_id,
 						],
 					],
+					'fields'           => 'ids',
 					'orderby'          => 'ID',
 					'order'            => 'DESC',
 					'posts_per_page'   => 1,
@@ -816,7 +817,7 @@ class REST_API extends WP_REST_Controller {
 			// Update the existing reference if it was found.
 			if ( ! empty( $existing_refs ) ) {
 				$post_arr = [
-					'ID'          => $existing_refs[0]->ID,
+					'ID'          => $existing_refs[0],
 					'post_title'  => $source['title'] ?? $source_id,
 					'post_type'   => $reference['subtype'],
 					'post_status' => $reference['post_status'] ?? 'draft',
@@ -1159,18 +1160,35 @@ class REST_API extends WP_REST_Controller {
 
 		// Defer to the core REST API endpoint to create the post.
 		$post_type_obj = get_post_type_object( $request['type'] );
-		$response      = $this->dispatch_request(
-			'POST',
-			'/wp/v2/' . ( $post_type_obj->rest_base ?: $post_type_obj->name ),
-			[ 'body' => $prepared_post ]
-		);
+
+		// Allow sst_prepare_post to filter and update an existing post.
+		if ( empty( $prepared_post->id ) ) {
+			$response = $this->dispatch_request(
+				'POST',
+				'/wp/v2/' . ( $post_type_obj->rest_base ?: $post_type_obj->name ),
+				[ 'body' => $prepared_post ]
+			);
+		} else {
+			$post_id = $prepared_post->id;
+			unset( $prepared_post->id );
+
+			$response = $this->dispatch_request(
+				'PUT',
+				sprintf(
+					'/wp/v2/%s/%d',
+					( $post_type_obj->rest_base ?: $post_type_obj->name ),
+					$post_id
+				),
+				[ 'body' => $prepared_post ]
+			);
+		}
 
 		// Confirm the response from the core endpoint.
 		if ( is_wp_error( $response ) ) {
 			return $response;
 		} elseif ( $response->get_status() >= 400 ) {
 			return $response;
-		} elseif ( 201 !== $response->get_status() ) {
+		} elseif ( 200 !== $response->get_status() && 201 !== $response->get_status() ) {
 			return new WP_Error(
 				'unexpected-response',
 				sprintf(
