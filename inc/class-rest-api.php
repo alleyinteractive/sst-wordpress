@@ -605,7 +605,7 @@ class REST_API extends WP_REST_Controller {
 			$file_array['name'] = wp_basename( $parsed_url['path'] );
 
 			// Download file to temp location.
-			$file_array['tmp_name'] = download_url( $file );
+			$file_array['tmp_name'] = static::_handle_file_download( $file );
 
 			// Resume normal functioning of `unfiltered_upload`.
 			remove_filter( 'user_has_cap', [ __CLASS__, 'disable_unfiltered_upload' ] );
@@ -617,7 +617,7 @@ class REST_API extends WP_REST_Controller {
 
 			// Do the validation and storage stuff.
 			switch_to_media_site();
-			$id = media_handle_sideload( $file_array, $post_id, $desc );
+			$id = static::media_handle_sideload( $file_array, $post_id, $desc, [] );
 			restore_current_blog();
 
 			// If error storing permanently, unlink.
@@ -631,6 +631,46 @@ class REST_API extends WP_REST_Controller {
 
 			return $id;
 		}
+	}
+
+	/**
+	 * Download a file.
+	 *
+	 * @param string $url URL to download.
+	 * @return mixed WP_Error on failure, string Filename on success.
+	 */
+	protected static function _handle_file_download( $url ) {
+		/**
+		 * Filter the downloading of a file.
+		 *
+		 * @param bool|string $file File name, defaults to false.
+		 * @param string      $url URL to download.
+		 * @return bool|string
+		 */
+		$pre_url = apply_filters( 'sst_pre_handle_file_download', false, $url );
+
+		if ( false !== $pre_url ) {
+			return $pre_url;
+		}
+
+		return download_url( $url );
+	}
+
+	/**
+	 * Wrapper for media_handle_sideload().
+	 *
+	 * @see media_handle_sideload()
+	 */
+	protected static function media_handle_sideload( ...$args ) {
+		$filter_args = $args;
+		array_unshift( $filter_args, null );
+
+		$id = apply_filters_ref_array( 'sst_pre_media_handle_sideload', $filter_args );
+		if ( null !== $id ) {
+			return $id;
+		}
+
+		return media_handle_sideload( ...$args );
 	}
 
 	/**
@@ -687,6 +727,32 @@ class REST_API extends WP_REST_Controller {
 			restore_current_blog();
 
 			return $attachment[0];
+		}
+
+		/**
+		 * Filter the attachment before a file is downloaded.
+		 *
+		 * Passing in a WP_Post object will use that attachment instead.
+		 *
+		 * @param int|null $attachment_id Attachment ID, null by default.
+		 * @param array $source SST Source.
+		 */
+		$attachment = apply_filters( 'sst_pre_download_file', null, $source );
+
+		if ( ! empty( $attachment ) && $attachment instanceof WP_Post ) {
+			// Add the existing attachment  to the response.
+			$this->add_object_to_response( $attachment );
+
+			// Store the existing attachment ref for use later.
+			$this->created_refs[ $source_id ] = [
+				'id'     => $attachment->ID,
+				'object' => $attachment,
+			];
+
+			// Get out of the media site.
+			restore_current_blog();
+
+			return $attachment;
 		}
 
 		// Move the source id to meta.
