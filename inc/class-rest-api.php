@@ -162,7 +162,7 @@ class REST_API extends WP_REST_Controller {
 	 * @param WP_REST_Request $request       Request object.
 	 * @return stdClass
 	 */
-	public function set_modified( $prepared_post, WP_REST_Request $request ): stdClass {
+	public function set_modified( $prepared_post, WP_REST_Request $request ) {
 		if ( is_wp_error( $prepared_post ) ) {
 			return $prepared_post;
 		}
