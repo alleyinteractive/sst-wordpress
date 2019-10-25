@@ -162,7 +162,11 @@ class REST_API extends WP_REST_Controller {
 	 * @param WP_REST_Request $request       Request object.
 	 * @return stdClass
 	 */
-	public function set_modified( stdClass $prepared_post, WP_REST_Request $request ): stdClass {
+	public function set_modified( $prepared_post, WP_REST_Request $request ): stdClass {
+		if ( is_wp_error( $prepared_post ) ) {
+			return $prepared_post;
+		}
+
 		if ( ! empty( $request['modified'] ) ) {
 			$date_data = rest_get_date_with_gmt( $request['modified'] );
 		} elseif ( ! empty( $request['modified_gmt'] ) ) {
