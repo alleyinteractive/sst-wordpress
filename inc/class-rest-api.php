@@ -1391,7 +1391,7 @@ class REST_API extends WP_REST_Controller {
 
 		// Add the created object to this endpoint's response.
 		$data = $response->get_data();
-		if ( empty( $data['id'] ) || $data['id'] !== $post_id ) {
+		if ( empty( $data['id'] ) ) {
 			return new WP_Error(
 				'missing-post-id',
 				sprintf(
@@ -1402,7 +1402,7 @@ class REST_API extends WP_REST_Controller {
 			);
 		}
 
-		$post = get_post( $post_id );
+		$post = get_post( $data['id'] );
 
 		$addl_data_result = $this->set_additional_data_for_request(
 			$request,
