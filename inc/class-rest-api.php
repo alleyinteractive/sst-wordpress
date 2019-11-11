@@ -1404,6 +1404,11 @@ class REST_API extends WP_REST_Controller {
 
 		$post = get_post( $data['id'] );
 
+		// Ensure the object is added to the response if updated.
+		if ( ! empty( $post ) && $data['id'] !== $post_id ) {
+			$this->add_object_to_response( $post );
+		}
+
 		$addl_data_result = $this->set_additional_data_for_request(
 			$request,
 			$post
