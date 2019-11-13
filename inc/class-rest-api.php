@@ -334,7 +334,7 @@ class REST_API extends WP_REST_Controller {
 	 * @param WP_Post|WP_Term $object Post or term object.
 	 * @return bool True on success, false on failure.
 	 */
-	protected function add_object_to_response( $object ): bool {
+	public function add_object_to_response( $object ): bool {
 		if ( $object instanceof WP_Post ) {
 			$this->response_objects['posts'][] = [
 				'post_id'       => $object->ID,
@@ -844,6 +844,14 @@ class REST_API extends WP_REST_Controller {
 		// Don't create the post if we've already done so during this request.
 		if ( ! empty( $this->created_refs[ $source_id ] ) ) {
 			return $this->created_refs[ $source_id ]['object'];
+		}
+
+		/**
+		 * Allow the reference post creation to be overridden.
+		 */
+		$pre_create_ref = apply_filters( 'sst_pre_create_ref_post', null, $reference, $this );
+		if ( null !== $pre_create_ref ) {
+			return $pre_create_ref;
 		}
 
 		// Move the source id to meta.
