@@ -105,6 +105,9 @@ class REST_API extends WP_REST_Controller {
 	 * something needs to happen on or before `init`.
 	 */
 	public function early_sst_hooks() {
+		// Set WP_IMPORTING to hopefully improve general compatibility.
+		defined( 'WP_IMPORTING' ) || define( WP_IMPORTING, true );
+
 		// Don't let Jetpack try to send sync requests during SST requests.
 		add_filter( 'jetpack_sync_sender_should_load', '__return_false', 999999 );
 
