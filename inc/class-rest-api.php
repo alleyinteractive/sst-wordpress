@@ -1228,6 +1228,12 @@ class REST_API extends WP_REST_Controller {
 			return $prepared_post;
 		}
 
+		// Check if there should be a different response entirely.
+		$pre_create = apply_filters( 'sst_pre_create_item', null, $prepared_post, $request );
+		if ( null !== $pre_create ) {
+			return rest_ensure_response( $pre_create );
+		}
+
 		// Defer to the core REST API endpoint to create the post.
 		$post_type_obj = get_post_type_object( $request['type'] );
 
@@ -1358,6 +1364,12 @@ class REST_API extends WP_REST_Controller {
 		$prepared_post = $this->prepare_item_for_database( $request );
 		if ( is_wp_error( $prepared_post ) ) {
 			return $prepared_post;
+		}
+
+		// Check if there should be a different response entirely.
+		$pre_update = apply_filters( 'sst_pre_update_item', null, $prepared_post, $request );
+		if ( null !== $pre_update ) {
+			return rest_ensure_response( $pre_update );
 		}
 
 		// Defer to the core REST API endpoint to update the post.
