@@ -723,7 +723,7 @@ class REST_API extends WP_REST_Controller {
 		if ( ! empty( $attachment[0] ) ) {
 			// Update the attachment.
 			$source['meta']['sst_source_id'] = $source_id;
-			$this->save_post_meta( $attachment[0], $source );
+			$this->save_post_meta( $attachment[0]->ID, $source );
 
 			// Add the existing attachment  to the response.
 			$this->add_object_to_response( $attachment[0] );
