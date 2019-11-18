@@ -106,7 +106,7 @@ class REST_API extends WP_REST_Controller {
 	 */
 	public function early_sst_hooks() {
 		// Set WP_IMPORTING to hopefully improve general compatibility.
-		defined( 'WP_IMPORTING' ) || define( WP_IMPORTING, true );
+		defined( 'WP_IMPORTING' ) || define( 'WP_IMPORTING', true );
 
 		// Don't let Jetpack try to send sync requests during SST requests.
 		add_filter( 'jetpack_sync_sender_should_load', '__return_false', 999999 );
@@ -721,6 +721,10 @@ class REST_API extends WP_REST_Controller {
 		);
 
 		if ( ! empty( $attachment[0] ) ) {
+			// Update the attachment.
+			$source['meta']['sst_source_id'] = $source_id;
+			$this->save_post_meta( $attachment[0]->ID, $source );
+
 			// Add the existing attachment  to the response.
 			$this->add_object_to_response( $attachment[0] );
 
