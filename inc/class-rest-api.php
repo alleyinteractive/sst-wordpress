@@ -867,8 +867,9 @@ class REST_API extends WP_REST_Controller {
 		// SST might send us the WP ID of the ref.
 		// Perform a basic check to ensure the ID is valid.
 		if (
-			! empty( $reference['id'] ) &&
-			is_string( get_post_status( $reference['id'] ) )
+			! empty( $reference['id'] )
+			&& is_string( get_post_status( $reference['id'] ) )
+			&& \get_post_meta( $reference['id'], 'sst_source_id', true ) === $source_id
 		) {
 			$post_arr = [
 				'ID'          => $reference['id'],
