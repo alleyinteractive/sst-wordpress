@@ -1170,7 +1170,7 @@ class REST_API extends WP_REST_Controller {
 	 * @param WP_Post         $post    Post object.
 	 * @return bool|WP_Error True on success, WP_Error on failure.
 	 */
-	protected function set_additional_data_for_request( WP_REST_Request $request, WP_Post $post ) {
+	public function set_additional_data_for_request( WP_REST_Request $request, WP_Post $post ) {
 		// Create reference objects.
 		$this->create_refs( $post->ID, $request );
 
