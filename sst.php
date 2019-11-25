@@ -20,6 +20,8 @@ define( __NAMESPACE__ . '\PATH', __DIR__ );
  * Bootstrap the plugin.
  */
 function bootstrap() {
+	global $sst_rest;
+
 	// Custom content types.
 	require_once PATH . '/inc/content-types.php';
 
@@ -28,8 +30,8 @@ function bootstrap() {
 
 	// REST API integration.
 	require_once PATH . '/inc/class-rest-api.php';
-	$rest = new REST_API();
-	add_action( 'rest_api_init', [ $rest, 'register_routes' ] );
-	add_action( 'rest_api_init', [ $rest, 'register_meta' ] );
+	$sst_rest = new REST_API();
+	add_action( 'rest_api_init', [ $sst_rest, 'register_routes' ] );
+	add_action( 'rest_api_init', [ $sst_rest, 'register_meta' ] );
 }
 add_action( 'after_setup_theme', __NAMESPACE__ . '\bootstrap' );
