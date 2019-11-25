@@ -449,7 +449,7 @@ class REST_API extends WP_REST_Controller {
 					update_post_meta(
 						$post_id,
 						$key,
-						$this->replace_refs_in_meta_value( $values, $key )
+						$this->replace_refs_in_meta_value( (string) $values, $key )
 					);
 				}
 			}
