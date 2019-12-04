@@ -783,26 +783,12 @@ class REST_API extends WP_REST_Controller {
 		// Move the source id to meta.
 		$source['meta']['sst_source_id'] = $source_id;
 
-		// SST might send us the WP ID of the ref.
-		// Perform a basic check to ensure the ID is valid.
-		if (
-			! empty( $reference['id'] ) &&
-			is_string( get_post_status( $reference['id'] ) )
-		) {
-			$attachment_arr = [
-				'ID'         => $reference['id'],
-				'post_title' => $source['title'] ?? $source_id,
-			];
-
-			$attachment_id = wp_update_post( $attachment_arr );
-		} else {
-			// Download the file to WordPress.
-			$attachment_id = $this->media_sideload_file(
-				$source['url'],
-				$post_id,
-				! empty( $source['title'] ) ? $source['title'] : null
-			);
-		}
+		// Download the file to WordPress.
+		$attachment_id = $this->media_sideload_file(
+			$source['url'],
+			$post_id,
+			! empty( $source['title'] ) ? $source['title'] : null
+		);
 
 		// Add a filter to modify the download URL (if failed).
 		$attachment_id = apply_filters(
