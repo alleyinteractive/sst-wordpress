@@ -720,6 +720,20 @@ class REST_API extends WP_REST_Controller {
 			]
 		);
 
+		// Ensure the file name matches.
+		if ( ! empty( $attachment[0] ) ) {
+			$filename = basename( $reference['args']['url'] );
+			$guid     = $attachment[0]->guid ?? '';
+
+			if (
+				empty( $guid )
+				|| ! wp_endswith( strtolower( $filename ), strtolower( $filename ) )
+			) {
+				// If the filename doesn't match, ignore it.
+				$attachment = [];
+			}
+		}
+
 		if ( ! empty( $attachment[0] ) ) {
 			// Update the attachment.
 			$source['meta']['sst_source_id'] = $source_id;
