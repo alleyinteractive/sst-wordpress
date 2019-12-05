@@ -1089,7 +1089,6 @@ class REST_API extends WP_REST_Controller {
 				'post' === $reference['type']
 				&& 'attachment' === $reference['subtype']
 			) {
-				$reference['sst_source_id'] = 'media-' . $reference['sst_source_id'];
 				$result = $this->download_file( $post_id, $reference );
 			} elseif ( 'post' === $reference['type'] ) {
 				$result = $this->create_ref_post( $reference );
