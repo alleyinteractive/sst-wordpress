@@ -727,7 +727,7 @@ class REST_API extends WP_REST_Controller {
 
 			if (
 				empty( $guid )
-				|| ! wp_endswith( strtolower( $filename ), strtolower( $filename ) )
+				|| ! wp_endswith( strtolower( $guid ), strtolower( $filename ) )
 			) {
 				// If the filename doesn't match, ignore it.
 				$attachment = [];
