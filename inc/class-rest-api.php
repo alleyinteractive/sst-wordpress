@@ -573,12 +573,13 @@ class REST_API extends WP_REST_Controller {
 	 * even for super admins, the downloaded file will be validated against the
 	 * allowed types in this WordPress install.
 	 *
-	 * @param string $file    The URL of the file to download.
-	 * @param int    $post_id The post ID the media is to be associated with.
-	 * @param string $desc    Optional. Description of the file.
+	 * @param string $file      The URL of the file to download.
+	 * @param int    $post_id   The post ID the media is to be associated with.
+	 * @param string $desc      Optional. Description of the file.
+	 * @param array  $post_data Optional. Post data to override. Default empty array.
 	 * @return int|WP_Error Attachment ID on success, WP_Error otherwise.
 	 */
-	public static function media_sideload_file( $file, $post_id, $desc = null ) {
+	public static function media_sideload_file( $file, $post_id, $desc = null, $args = [] ) {
 		if ( ! function_exists( 'media_handle_sideload' ) ) {
 			require_once ABSPATH . 'wp-admin/includes/file.php';
 			require_once ABSPATH . 'wp-admin/includes/image.php';
@@ -624,7 +625,7 @@ class REST_API extends WP_REST_Controller {
 
 			// Do the validation and storage stuff.
 			switch_to_media_site();
-			$id = static::media_handle_sideload( $file_array, $post_id, $desc, [] );
+			$id = static::media_handle_sideload( $file_array, $post_id, $desc, $args );
 			restore_current_blog();
 
 			// If error storing permanently, unlink.
