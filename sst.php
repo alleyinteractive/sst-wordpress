@@ -14,7 +14,7 @@
 
 namespace SST;
 
-define( __NAMESPACE__ . '\PATH', __DIR__ );
+define( 'SST\PATH', __DIR__ );
 
 /**
  * Bootstrap the plugin.
