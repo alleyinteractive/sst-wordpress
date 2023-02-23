@@ -374,14 +374,14 @@ class REST_API extends WP_REST_Controller {
 					add_post_meta(
 						$post_id,
 						$key,
-						$this->replace_refs_in_meta_value( $value, $key )
+						maybe_serialize( $this->replace_refs_in_meta_value( $value, $key ) )
 					);
 				}
 			} else {
 				update_post_meta(
 					$post_id,
 					$key,
-					$this->replace_refs_in_meta_value( $values, $key )
+					maybe_unserialize( $this->replace_refs_in_meta_value( $values, $key ) )
 				);
 			}
 		}
