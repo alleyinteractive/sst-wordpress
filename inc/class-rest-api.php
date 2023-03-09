@@ -751,7 +751,7 @@ class REST_API extends WP_REST_Controller {
 			// check if this error is a term_exists error
 			if ( 'term_exists' === $term->get_error_code() || 'duplicate_term_blocked' === $term->get_error_code() ) {
 				$error_data = $term->get_error_data();
-				$term_id    = $error_data['term_id'] ?? '';
+				$term_id    = (int) $error_data['term_id'] ?? '';
 			} else {
 				return $term;
 			}
