@@ -748,9 +748,15 @@ class REST_API extends WP_REST_Controller {
 
 		$term = wp_insert_term( $name, $taxonomy, $args );
 		if ( is_wp_error( $term ) ) {
-			return $term;
+			// check if this error is a term_exists error
+			if ( 'term_exists' === $term->get_error_code() || 'duplicate_term_blocked' === $term->get_error_code() ) {
+				$error_data = $term->get_error_data();
+				$term_id    = $error_data['term_id'] ?? '';
+			} else {
+				return $term;
+			}
 		}
-		$term_id = $term['term_id'];
+		$term_id = $term_id ?? $term['term_id'];
 
 		// Set the term to the post.
 		$result = wp_set_object_terms( $post_id, $term_id, $taxonomy, true );
